@@ -26,12 +26,21 @@ final class Store: ObservableObject {
         didSet { objectWillChange.send() }
     }
     @AppStorage("strength") var strengthRaw: String = AnalysisStrength.normal.rawValue
+    @AppStorage("quizMode") var quizModeRaw: String = QuizMode.all.rawValue
 
     @Published var games: [ChessComGame] = []
     @Published var analyses: [String: GameAnalysis] = [:]
     @Published var progress: [String: Double] = [:]
     @Published var loadingGames = false
     @Published var errorMessage: String?
+    @Published var answers: [String: QuizAnswer] = [:]
+    @Published var tab: String = UserDefaults.standard.string(forKey: "tab") ?? "games"
+    @Published var solvedPuzzles: Set<String> = []
+
+    var quizMode: QuizMode {
+        get { QuizMode(rawValue: quizModeRaw) ?? .all }
+        set { quizModeRaw = newValue.rawValue; objectWillChange.send() }
+    }
 
     var strength: AnalysisStrength {
         get { AnalysisStrength(rawValue: strengthRaw) ?? .normal }
@@ -46,6 +55,7 @@ final class Store: ObservableObject {
     }()
 
     private var gamesCacheURL: URL { folder.deletingLastPathComponent().appendingPathComponent("games.json") }
+    private var answersURL: URL { folder.deletingLastPathComponent().appendingPathComponent("answers.json") }
 
     init() {
         loadSaved()
@@ -55,9 +65,19 @@ final class Store: ObservableObject {
         let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
         for f in files where f.pathExtension == "json" {
             if let data = try? Data(contentsOf: f), let a = try? Engine.decoder.decode(GameAnalysis.self, from: data) {
+                // Reviews from before move ideas existed get redone so every screen has full data.
+                if a.moves.first?.ideasText == nil && !a.moves.isEmpty {
+                    try? FileManager.default.removeItem(at: f)
+                    continue
+                }
                 analyses[f.deletingPathExtension().lastPathComponent] = a
             }
         }
+        if let data = try? Data(contentsOf: answersURL),
+           let saved = try? JSONDecoder().decode([String: QuizAnswer].self, from: data) {
+            answers = saved
+        }
+        solvedPuzzles = Set(UserDefaults.standard.stringArray(forKey: "solvedPuzzles") ?? [])
         if let data = try? Data(contentsOf: gamesCacheURL),
            let cached = try? JSONDecoder().decode([ChessComGame].self, from: data) {
             games = cached
@@ -91,7 +111,7 @@ final class Store: ObservableObject {
     private func fetch<T: Decodable>(_ urlString: String) async throws -> T {
         guard let url = URL(string: urlString) else { throw URLError(.badURL) }
         var req = URLRequest(url: url)
-        req.setValue("ChessCoach-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("MeowChess-iOS/1.0", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, http.statusCode != 200 { throw URLError(.badServerResponse) }
         let d = JSONDecoder()
@@ -129,10 +149,66 @@ final class Store: ObservableObject {
         }
     }
 
+    // MARK: Idea quiz and puzzles
+
+    static func answerKey(game: String, ply: Int) -> String { "\(game)#\(ply)" }
+
+    func saveAnswer(_ a: QuizAnswer, game: String, ply: Int) {
+        answers[Self.answerKey(game: game, ply: ply)] = a
+        if let data = try? JSONEncoder().encode(answers) { try? data.write(to: answersURL) }
+    }
+
+    func markSolved(_ id: String) {
+        solvedPuzzles.insert(id)
+        UserDefaults.standard.set(Array(solvedPuzzles), forKey: "solvedPuzzles")
+    }
+
+    /// Puzzles built from the player's own mistakes and blunders, newest games first.
+    var puzzles: [Puzzle] {
+        var out: [Puzzle] = []
+        for game in games {
+            guard let a = analyses[game.id], let white = a.userIsWhite(username) else { continue }
+            for m in a.moves where m.isWhite == white && (m.grade == .mistake || m.grade == .blunder) && !m.playedIsBest {
+                out.append(Puzzle(id: Self.answerKey(game: game.id, ply: m.ply), move: m, userIsWhite: white,
+                                  opponent: white ? a.black : a.white))
+            }
+        }
+        return out
+    }
+
     func deleteAllAnalyses() {
         for id in analyses.keys {
             try? FileManager.default.removeItem(at: folder.appendingPathComponent("\(id).json"))
         }
         analyses = [:]
     }
+}
+
+enum QuizMode: String, CaseIterable, Identifiable {
+    case all, key, off
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .all: return "All my moves"
+        case .key: return "Key moments"
+        case .off: return "Off"
+        }
+    }
+}
+
+struct QuizAnswer: Codable, Hashable {
+    /// IdeaCategory raw value, or "unsure".
+    var choice: String
+    /// Whether the move really does what the player said.
+    var matched: Bool?
+    /// The player's own words, when typed (classified by the Jev decision model).
+    var typed: String? = nil
+    var confidence: Double? = nil
+}
+
+struct Puzzle: Identifiable, Hashable {
+    let id: String
+    let move: MoveReview
+    let userIsWhite: Bool
+    let opponent: String
 }

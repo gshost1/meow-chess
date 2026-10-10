@@ -69,19 +69,35 @@ extension Grade {
     }
 }
 
+/// A piece that should fly in from another square (the piece is already on `to` in the FEN).
+struct Slide: Hashable {
+    let from: Square
+    let to: Square
+}
+
+/// What to animate when the board appears: sliding pieces and a captured piece going "poof".
+struct BoardAnimation: Equatable {
+    var key: Int
+    var slides: [Slide] = []
+    var poof: Poof? = nil
+}
+
+struct Poof: Hashable {
+    let piece: Character
+    let square: Square
+}
+
 struct BoardView: View {
     let fen: String
     var flipped = false
     var highlights: [Square] = []
     var arrows: [Arrow] = []
     var badge: (Square, Grade)? = nil
-
-    private static let glyphs: [Character: String] = [
-        "k": "♚", "q": "♛", "r": "♜", "b": "♝", "n": "♞", "p": "♟",
-    ]
-    private static let outlines: [Character: String] = [
-        "k": "♔", "q": "♕", "r": "♖", "b": "♗", "n": "♘", "p": "♙",
-    ]
+    var moods: [Square: PieceMood] = [:]
+    var animation: BoardAnimation? = nil
+    var selected: Square? = nil
+    var targets: Set<Square> = []
+    var onTap: ((Square) -> Void)? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -90,24 +106,24 @@ struct BoardView: View {
             let board = parseBoard(fen)
             ZStack(alignment: .topLeading) {
                 ForEach(0..<64, id: \.self) { i in
-                    let sq = Square(i)
-                    let pos = position(sq, cell)
-                    ZStack {
-                        Rectangle().fill((sq.file + sq.rank) % 2 == 0 ? BoardTheme.dark : BoardTheme.light)
-                        if highlights.contains(sq) {
-                            Rectangle().fill(BoardTheme.highlight)
-                        }
-                        coordinates(sq, cell)
-                        if let p = board[i] {
-                            piece(p, cell)
-                        }
+                    squareView(Square(i), cell, occupied: board[i] != nil)
+                }
+                ForEach(0..<64, id: \.self) { i in
+                    if let p = board[i] {
+                        pieceView(p, Square(i), cell)
                     }
-                    .frame(width: cell, height: cell)
-                    .position(x: pos.x, y: pos.y)
+                }
+                .allowsHitTesting(false)
+                if let poof = animation?.poof {
+                    PoofView(piece: poof.piece, cell: cell)
+                        .id("poof-\(animation?.key ?? 0)")
+                        .position(position(poof.square, cell))
+                        .allowsHitTesting(false)
                 }
                 ForEach(arrows, id: \.self) { a in
                     ArrowShape(from: position(a.from, cell), to: position(a.to, cell), width: cell * 0.18)
                         .fill(a.color.opacity(0.8))
+                        .allowsHitTesting(false)
                 }
                 if let (sq, grade) = badge {
                     let p = position(sq, cell)
@@ -119,37 +135,59 @@ struct BoardView: View {
                         .overlay(Circle().stroke(.white, lineWidth: 1.5))
                         .shadow(radius: 1)
                         .position(x: p.x + cell * 0.38, y: p.y - cell * 0.38)
+                        .allowsHitTesting(false)
                 }
             }
             .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .aspectRatio(1, contentMode: .fit)
+    }
+
+    private func squareView(_ sq: Square, _ cell: CGFloat, occupied: Bool) -> some View {
+        ZStack {
+            Rectangle().fill((sq.file + sq.rank) % 2 == 0 ? BoardTheme.dark : BoardTheme.light)
+            if highlights.contains(sq) {
+                Rectangle().fill(BoardTheme.highlight)
+            }
+            if selected == sq {
+                Rectangle().fill(Color.accentColor.opacity(0.45))
+            }
+            coordinates(sq, cell)
+            if targets.contains(sq) {
+                if occupied {
+                    Circle().stroke(Color.black.opacity(0.28), lineWidth: cell * 0.08).padding(cell * 0.06)
+                } else {
+                    Circle().fill(Color.black.opacity(0.22)).frame(width: cell * 0.3, height: cell * 0.3)
+                }
+            }
+        }
+        .frame(width: cell, height: cell)
+        .contentShape(Rectangle())
+        .onTapGesture { onTap?(sq) }
+        .position(position(sq, cell))
+    }
+
+    @ViewBuilder
+    private func pieceView(_ p: Character, _ sq: Square, _ cell: CGFloat) -> some View {
+        let mood = moods[sq] ?? .normal
+        if let anim = animation, let slide = anim.slides.first(where: { $0.to == sq }) {
+            let from = position(slide.from, cell)
+            let to = position(sq, cell)
+            SlidingPiece(piece: p, mood: mood, cell: cell, dx: from.x - to.x, dy: from.y - to.y)
+                .id("slide-\(anim.key)-\(sq.index)")
+                .position(to)
+        } else {
+            CatPiece(piece: p, mood: mood)
+                .frame(width: cell, height: cell)
+                .position(position(sq, cell))
+        }
     }
 
     private func position(_ sq: Square, _ cell: CGFloat) -> CGPoint {
         let col = flipped ? 7 - sq.file : sq.file
         let row = flipped ? sq.rank : 7 - sq.rank
         return CGPoint(x: (CGFloat(col) + 0.5) * cell, y: (CGFloat(row) + 0.5) * cell)
-    }
-
-    @ViewBuilder
-    private func piece(_ p: Character, _ cell: CGFloat) -> some View {
-        let lower = Character(p.lowercased())
-        // U+FE0E forces text (not emoji) presentation of the chess glyphs.
-        let solid = (Self.glyphs[lower] ?? "") + "\u{FE0E}"
-        let outline = (Self.outlines[lower] ?? "") + "\u{FE0E}"
-        let font = Font.system(size: cell * 0.82)
-        if p.isUppercase {
-            ZStack {
-                Text(solid).font(font).foregroundStyle(.white)
-                Text(outline).font(font).foregroundStyle(.black)
-            }
-            .shadow(color: .black.opacity(0.25), radius: 0.5, y: 1)
-        } else {
-            Text(solid).font(font).foregroundStyle(Color(white: 0.12))
-                .shadow(color: .white.opacity(0.3), radius: 0.5)
-        }
     }
 
     @ViewBuilder
@@ -172,6 +210,76 @@ struct BoardView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(2)
             }
+        }
+    }
+}
+
+/// Moves a piece from an offset back to its square with a little hop.
+struct HopEffect: GeometryEffect {
+    var t: CGFloat
+    let dx: CGFloat
+    let dy: CGFloat
+    let lift: CGFloat
+
+    var animatableData: CGFloat {
+        get { t }
+        set { t = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let k = min(max(t, 0), 1)
+        let hop = sin(.pi * k)
+        let s = 1 + 0.18 * hop
+        var tr = CGAffineTransform(translationX: dx * (1 - k), y: dy * (1 - k) - lift * hop)
+        tr = tr.translatedBy(x: size.width / 2, y: size.height / 2)
+            .scaledBy(x: s, y: s)
+            .translatedBy(x: -size.width / 2, y: -size.height / 2)
+        return ProjectionTransform(tr)
+    }
+}
+
+struct SlidingPiece: View {
+    let piece: Character
+    let mood: PieceMood
+    let cell: CGFloat
+    let dx: CGFloat
+    let dy: CGFloat
+    @State private var t: CGFloat = 0
+
+    var body: some View {
+        CatPiece(piece: piece, mood: mood)
+            .frame(width: cell, height: cell)
+            .modifier(HopEffect(t: t, dx: dx, dy: dy, lift: cell * 0.35))
+            .zIndex(1)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.36)) { t = 1 }
+            }
+    }
+}
+
+/// A captured piece puffs away in a little cloud of sparkles.
+struct PoofView: View {
+    let piece: Character
+    let cell: CGFloat
+    @State private var p: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            CatPiece(piece: piece, mood: .dizzy)
+                .frame(width: cell, height: cell)
+                .scaleEffect(1 + 0.4 * p)
+                .opacity(Double(1 - p))
+            ForEach(0..<6, id: \.self) { i in
+                let angle = Double(i) / 6 * 2 * .pi
+                Text("✦")
+                    .font(.system(size: cell * 0.22))
+                    .foregroundStyle(i.isMultiple(of: 2) ? Color.yellow : Color.white)
+                    .offset(x: cos(angle) * cell * 0.55 * p, y: sin(angle) * cell * 0.55 * p)
+                    .opacity(Double(p < 0.15 ? p / 0.15 : 1 - p))
+            }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.5).delay(0.22)) { p = 1 }
         }
     }
 }

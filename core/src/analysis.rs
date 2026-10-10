@@ -5,7 +5,9 @@ use crate::eval::{material_points, HUMAN_VALUE};
 use crate::notation::{parse_pgn, to_san, PgnGame};
 use crate::position::*;
 use crate::search::{is_mate_score, mate_in, Limits, SearchResult, Searcher, MATE};
+use crate::ideas::{color_title, ideas_body, ideas_sentence, move_ideas, threat_of, Idea};
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug)]
 pub struct AnalysisOptions {
@@ -55,6 +57,35 @@ pub struct MoveReview {
     pub headline: String,
     pub explanation: String,
     pub tags: Vec<&'static str>,
+    /// What the played move is trying to do.
+    pub ideas: Vec<Idea>,
+    pub ideas_text: String,
+    /// What the engine's move would have done (same as `ideas` when the best move was played).
+    pub best_ideas: Vec<Idea>,
+    pub best_text: Option<String>,
+    /// What the opponent was threatening before this move.
+    pub opponent_threat: Option<String>,
+    pub best_line_moves: Vec<LineMove>,
+    pub reply_line_moves: Vec<LineMove>,
+    pub cp_loss: i32,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct LineMove {
+    pub san: String,
+    pub uci: String,
+    /// Position after this move.
+    pub fen: String,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct PlanSummary {
+    /// "Attacker", "Defender", "Builder" or "Balanced".
+    pub style: String,
+    pub style_detail: String,
+    /// Which side of the board most of the activity was aimed at.
+    pub focus: String,
+    pub highlights: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -67,6 +98,12 @@ pub struct SideSummary {
     pub mistake: u32,
     pub blunder: u32,
     pub castled_on_move: Option<u16>,
+    /// Average centipawn loss per move.
+    pub acpl: f64,
+    /// Rough playing strength implied by the accuracy of this game.
+    pub estimated_rating: u32,
+    pub plan: PlanSummary,
+    pub idea_counts: BTreeMap<&'static str, u32>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -119,7 +156,7 @@ fn win_pct(cp: i32) -> f64 {
     50.0 + 50.0 * (2.0 / (1.0 + (-0.003_682_08 * x).exp()) - 1.0)
 }
 
-fn score_to_cp(score: i32) -> i32 {
+pub(crate) fn score_to_cp(score: i32) -> i32 {
     if is_mate_score(score) {
         if score > 0 { 10_000 } else { -10_000 }
     } else {
@@ -154,12 +191,12 @@ fn describe(score_mover: i32) -> &'static str {
     }
 }
 
-fn balance(pos: &Position, color: usize) -> i32 {
+pub(crate) fn balance(pos: &Position, color: usize) -> i32 {
     material_points(pos, color) - material_points(pos, color ^ 1)
 }
 
 /// Play out `line` from `start`, returning the visited positions (start included) and moves.
-fn walk(start: &Position, line: &[Move], max: usize) -> (Vec<Position>, Vec<Move>) {
+pub(crate) fn walk(start: &Position, line: &[Move], max: usize) -> (Vec<Position>, Vec<Move>) {
     let mut positions = vec![*start];
     let mut moves = vec![];
     let mut p = *start;
@@ -177,7 +214,7 @@ fn walk(start: &Position, line: &[Move], max: usize) -> (Vec<Position>, Vec<Move
 }
 
 /// Material balance (for `color`) once the captures at the start of a line have settled.
-fn settled_balance(positions: &[Position], moves: &[Move], color: usize, max: usize) -> i32 {
+pub(crate) fn settled_balance(positions: &[Position], moves: &[Move], color: usize, max: usize) -> i32 {
     let k = moves.len();
     // A line that ended on its own already resolved its captures (the search ends in quiescence).
     if k < max {
@@ -192,7 +229,7 @@ fn settled_balance(positions: &[Position], moves: &[Move], color: usize, max: us
     balance(&positions[k], color)
 }
 
-fn san_line(start: &Position, line: &[Move], max: usize) -> Vec<String> {
+pub(crate) fn san_line(start: &Position, line: &[Move], max: usize) -> Vec<String> {
     let mut p = *start;
     let mut out = vec![];
     for &m in line.iter().take(max) {
@@ -207,7 +244,7 @@ fn san_line(start: &Position, line: &[Move], max: usize) -> Vec<String> {
     out
 }
 
-fn captured_kind(pos: &Position, m: Move) -> Option<u8> {
+pub(crate) fn captured_kind(pos: &Position, m: Move) -> Option<u8> {
     if !m.is_capture() {
         None
     } else if m.flags & FLAG_EP != 0 {
@@ -218,7 +255,7 @@ fn captured_kind(pos: &Position, m: Move) -> Option<u8> {
 }
 
 /// True if the piece on `sq` can be won: attacked and either undefended or attacked by something cheaper.
-fn is_loose(pos: &Position, sq: u8) -> bool {
+pub(crate) fn is_loose(pos: &Position, sq: u8) -> bool {
     let pc = pos.board[sq as usize];
     if pc == EMPTY || piece_kind(pc) == KING {
         return false;
@@ -238,7 +275,7 @@ fn is_loose(pos: &Position, sq: u8) -> bool {
 }
 
 /// Pieces of the side not to move that the piece on `sq` attacks in a forking way.
-fn fork_targets(pos: &Position, sq: u8) -> Vec<u8> {
+pub(crate) fn fork_targets(pos: &Position, sq: u8) -> Vec<u8> {
     let pc = pos.board[sq as usize];
     if pc == EMPTY {
         return vec![];
@@ -285,7 +322,7 @@ fn list_targets(pos: &Position, targets: &[u8], owner: &str) -> String {
     names.join(" and ")
 }
 
-fn game_phase(pos: &Position, move_number: u16) -> &'static str {
+pub(crate) fn game_phase(pos: &Position, move_number: u16) -> &'static str {
     let npm: i32 = [WHITE, BLACK]
         .iter()
         .map(|&c| {
@@ -692,6 +729,8 @@ pub fn analyze_game(game: &PgnGame, opts: AnalysisOptions, mut progress: impl Fn
 
     let mut moves = Vec::with_capacity(game.moves.len());
     let mut sums = [SideSummary::default(), SideSummary::default()];
+    let mut idea_searcher = Searcher::new(8);
+    let mut tallies = [PlanTally::default(), PlanTally::default()];
     let mut acc_total = [0.0f64; 2];
     let mut acc_count = [0u32; 2];
 
@@ -747,11 +786,72 @@ pub fn analyze_game(game: &PgnGame, opts: AnalysisOptions, mut progress: impl Fn
         let reply_moves: Vec<Move> = if after.legal_moves().is_empty() { vec![] } else { results[i + 1].pv.clone() };
         let reply_line = san_line(after, &reply_moves, 6);
 
+        // Ideas behind the played move and the engine's move.
+        let threat_before = threat_of(&mut idea_searcher, pos);
+        let reply_wins = mate_in(results[i + 1].score).is_some_and(|n| n > 0) || {
+            let (rp, rm) = walk(after, &reply_moves, 8);
+            balance(pos, mover) - settled_balance(&rp, &rm, mover, 8) >= 2
+        };
+        let prev = if i > 0 { Some(game.moves[i - 1]) } else { None };
+        let san = to_san(pos, m);
+        let best_san = to_san(pos, results[i].best);
+        let ideas = move_ideas(pos, m, prev, threat_before.as_ref(), reply_wins, &mut idea_searcher);
+        let best_ideas = if played_is_best {
+            ideas.clone()
+        } else {
+            move_ideas(pos, results[i].best, prev, threat_before.as_ref(), false, &mut idea_searcher)
+        };
+        let ideas_text = ideas_sentence(&san, &ideas);
+        let best_text = (!played_is_best).then(|| {
+            let mut t = format!("The engine's choice was {best_san}, which {}.", ideas_body(&best_ideas));
+            if best_line.len() > 1 {
+                t.push_str(&format!(" A likely continuation: {}.", best_line.iter().take(5).cloned().collect::<Vec<_>>().join(" ")));
+            }
+            t
+        });
+        let opponent_threat = threat_before.as_ref().map(|t| {
+            let what = if t.mate { "checkmate" } else { "winning material" };
+            format!("{} was threatening {} ({what}).", color_title(mover ^ 1), t.san)
+        });
+        let cap = |s: i32| score_to_cp(s).clamp(-1000, 1000);
+        let cp_loss = if played_is_best { 0 } else { (cap(before_score) - cap(after_score)).max(0) };
+
+        let tally = &mut tallies[mover];
+        tally.moves += 1;
+        tally.cp_loss += cp_loss as i64;
+        for idea in &ideas {
+            *sums[mover].idea_counts.entry(idea.kind).or_insert(0) += 1;
+        }
+        let has = |k: &[&str]| ideas.iter().any(|i| k.contains(&i.kind));
+        if has(&["attack", "fork", "pin", "king_attack", "check", "checkmate"]) {
+            tally.attacking += 1;
+        }
+        if has(&["king_attack", "check", "checkmate"]) {
+            tally.king_hunting += 1;
+        }
+        if has(&["defend", "save_piece"]) {
+            tally.defending += 1;
+        }
+        if has(&["develop", "center", "castle", "prepare_castle", "improve"]) {
+            tally.building += 1;
+        }
+        if pos.fullmove <= 10 && has(&["develop"]) {
+            tally.developed_early += 1;
+        }
+        if threat_before.is_some() && reply_wins && matches!(class, "mistake" | "blunder") {
+            tally.missed_threats += 1;
+        }
+        if game_phase(pos, pos.fullmove) != "opening" {
+            tally.file_sum += file_of(m.to) as u32;
+            tally.file_n += 1;
+        }
+        *tally.piece_moves.entry(kind_name(piece_kind(pos.board[m.from as usize]))).or_insert(0) += 1;
+
         moves.push(MoveReview {
             ply: i + 1,
             move_number: pos.fullmove,
             color: if mover == WHITE { "white" } else { "black" },
-            san: to_san(pos, m),
+            san,
             uci: m.uci(),
             from: square_name(m.from),
             to: square_name(m.to),
@@ -759,7 +859,7 @@ pub fn analyze_game(game: &PgnGame, opts: AnalysisOptions, mut progress: impl Fn
             fen_after: after.to_fen(),
             eval_before: to_eval(before_score, mover),
             eval_after: to_eval(after_score, mover),
-            best_san: to_san(pos, results[i].best),
+            best_san,
             best_uci: results[i].best.uci(),
             best_line,
             reply_san: reply_line.first().cloned(),
@@ -772,11 +872,24 @@ pub fn analyze_game(game: &PgnGame, opts: AnalysisOptions, mut progress: impl Fn
             headline: ex.headline,
             explanation: ex.text,
             tags: ex.tags,
+            ideas,
+            ideas_text,
+            best_ideas,
+            best_text,
+            opponent_threat,
+            best_line_moves: line_moves(pos, &results[i].pv, 6),
+            reply_line_moves: line_moves(after, &reply_moves, 6),
+            cp_loss,
         });
     }
 
     for c in [WHITE, BLACK] {
         sums[c].accuracy = if acc_count[c] > 0 { ((acc_total[c] / acc_count[c] as f64) * 10.0).round() / 10.0 } else { 0.0 };
+        let t = &tallies[c];
+        let acpl = if t.moves > 0 { t.cp_loss as f64 / t.moves as f64 } else { 0.0 };
+        sums[c].acpl = (acpl * 10.0).round() / 10.0;
+        sums[c].estimated_rating = rating_from_acpl(acpl);
+        sums[c].plan = plan_summary(t, sums[c].castled_on_move);
     }
     let [white_summary, black_summary] = sums;
     let h = |k: &str| game.header(k).map(|s| s.to_string());
@@ -794,6 +907,98 @@ pub fn analyze_game(game: &PgnGame, opts: AnalysisOptions, mut progress: impl Fn
         black_summary,
         depth_reached: if total > 0 { depth_sum / total as u32 } else { 0 },
     }
+}
+
+#[derive(Default)]
+struct PlanTally {
+    moves: u32,
+    cp_loss: i64,
+    attacking: u32,
+    king_hunting: u32,
+    defending: u32,
+    building: u32,
+    developed_early: u32,
+    missed_threats: u32,
+    file_sum: u32,
+    file_n: u32,
+    piece_moves: BTreeMap<&'static str, u32>,
+}
+
+/// Map average centipawn loss to an approximate rating. Lower loss = stronger play.
+/// Calibrated on real ~400-rated Chess.com games reviewed by this engine (median loss ~60).
+/// Losses are capped at 10 pawns per move, so decided games understate errors; the curve is
+/// steeper than published Stockfish-based fits to compensate.
+pub fn rating_from_acpl(acpl: f64) -> u32 {
+    let r = 4000.0 * (-0.035 * acpl).exp();
+    ((r / 25.0).round() * 25.0).clamp(100.0, 2800.0) as u32
+}
+
+fn plan_summary(t: &PlanTally, castled: Option<u16>) -> PlanSummary {
+    if t.moves == 0 {
+        return PlanSummary::default();
+    }
+    let pct = |n: u32| n * 100 / t.moves;
+    let (style, detail) = if pct(t.attacking) >= 40 {
+        ("Attacker", format!("{}% of the moves created threats or attacked something.", pct(t.attacking)))
+    } else if pct(t.defending) >= 25 {
+        ("Defender", format!("{}% of the moves were spent defending or saving pieces.", pct(t.defending)))
+    } else if pct(t.building) >= 40 {
+        ("Builder", format!("{}% of the moves developed, improved pieces or took the center.", pct(t.building)))
+    } else {
+        ("Balanced", format!("A mix: {}% attacking, {}% defending.", pct(t.attacking), pct(t.defending)))
+    };
+    let focus = if t.file_n == 0 {
+        "the center".to_string()
+    } else {
+        let avg = t.file_sum as f64 / t.file_n as f64;
+        if avg < 2.8 {
+            "the queenside".into()
+        } else if avg > 4.2 {
+            "the kingside".into()
+        } else {
+            "the center".into()
+        }
+    };
+    let mut highlights = vec![];
+    highlights.push(match t.developed_early {
+        0 => "Developed no knights or bishops in the first 10 moves.".to_string(),
+        1 => "Developed only 1 minor piece in the first 10 moves.".to_string(),
+        n => format!("Developed {n} minor pieces in the first 10 moves."),
+    });
+    highlights.push(match castled {
+        Some(m) if m <= 10 => format!("Castled early, on move {m}."),
+        Some(m) => format!("Castled late, on move {m}."),
+        None => "Never castled.".to_string(),
+    });
+    if t.king_hunting > 0 {
+        highlights.push(format!("Made {} moves aimed at the enemy king.", t.king_hunting));
+    }
+    if t.missed_threats > 0 {
+        highlights.push(format!(
+            "Missed {} threat{} from the opponent.",
+            t.missed_threats,
+            if t.missed_threats == 1 { "" } else { "s" }
+        ));
+    }
+    if let Some((piece, n)) = t.piece_moves.iter().filter(|(k, _)| **k != "pawn").max_by_key(|(_, n)| **n) {
+        highlights.push(format!("Busiest piece: the {piece} ({n} moves)."));
+    }
+    PlanSummary { style: style.into(), style_detail: detail, focus, highlights }
+}
+
+fn line_moves(start: &Position, line: &[Move], max: usize) -> Vec<LineMove> {
+    let mut p = *start;
+    let mut out = vec![];
+    for &m in line.iter().take(max) {
+        match p.try_make(m) {
+            Some(n) => {
+                out.push(LineMove { san: to_san(&p, m), uci: m.uci(), fen: n.to_fen() });
+                p = n;
+            }
+            None => break,
+        }
+    }
+    out
 }
 
 /// Parse a PGN and analyse it. `username` (case-insensitive) picks whose point of view to explain from.

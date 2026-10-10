@@ -1,4 +1,4 @@
-name: ChessCoach
+name: MeowChess
 options:
   bundleIdPrefix: com.julius201
   deploymentTarget:
@@ -7,20 +7,32 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
 targets:
-  ChessCoach:
+  MeowChess:
     type: application
     platform: iOS
     sources:
-      - ChessCoach
+      - MeowChess
     dependencies:
       - framework: ChessCore.xcframework
         embed: false
       - sdk: Charts.framework
+    info:
+      path: MeowChess/Info.plist
+      properties:
+        CFBundleDisplayName: Meow Chess
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # Lets Meowy AI reach a model running on the player's own computer (e.g. Ollama over http).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Meow Chess connects to an AI model running on your own computer, if you set one up in Settings.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.julius201.chesscoach
+        PRODUCT_BUNDLE_IDENTIFIER: com.julius201.meowchess
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Chess Coach
+        INFOPLIST_KEY_CFBundleDisplayName: Meow Chess
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES

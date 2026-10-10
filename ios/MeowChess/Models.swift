@@ -74,16 +74,122 @@ struct MoveReview: Codable, Hashable, Identifiable {
     let headline: String
     let explanation: String
     let tags: [String]
+    let ideas: [Idea]?
+    let ideasText: String?
+    let bestIdeas: [Idea]?
+    let bestText: String?
+    let opponentThreat: String?
+    let bestLineMoves: [LineMove]?
+    let replyLineMoves: [LineMove]?
+    let cpLoss: Int?
 
     enum CodingKeys: String, CodingKey {
         case ply, moveNumber, color, san, uci, from, to, fenBefore, fenAfter, evalBefore, evalAfter
         case bestSan, bestUci, bestLine, replySan, replyUci, replyLine
         case grade = "class"
         case winDrop, accuracy, phase, headline, explanation, tags
+        case ideas, ideasText, bestIdeas, bestText, opponentThreat, bestLineMoves, replyLineMoves, cpLoss
     }
 
     var isWhite: Bool { color == "white" }
     var numberLabel: String { isWhite ? "\(moveNumber)." : "\(moveNumber)…" }
+    var playedIsBest: Bool { uci == bestUci }
+}
+
+struct Idea: Codable, Hashable {
+    let kind: String
+    let text: String
+
+    var category: IdeaCategory { IdeaCategory(kind: kind) }
+}
+
+struct LineMove: Codable, Hashable {
+    let san: String
+    let uci: String
+    let fen: String
+}
+
+/// The plain-language idea groups used by the "what was your idea?" quiz.
+enum IdeaCategory: String, CaseIterable, Codable, Identifiable {
+    case attack, kingAttack, winMaterial, trade, defend, develop, castle, center, pawnPush, improve
+
+    var id: String { rawValue }
+
+    init(kind: String) {
+        switch kind {
+        case "attack", "fork", "pin": self = .attack
+        case "king_attack", "check", "checkmate": self = .kingAttack
+        case "capture", "promote": self = .winMaterial
+        case "trade": self = .trade
+        case "defend", "save_piece", "prevent": self = .defend
+        case "develop": self = .develop
+        case "castle", "prepare_castle", "king_safety": self = .castle
+        case "center": self = .center
+        case "pawn_push": self = .pawnPush
+        default: self = .improve
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .attack: return "Attack a piece"
+        case .kingAttack: return "Go after the king"
+        case .winMaterial: return "Win material"
+        case .trade: return "Trade pieces"
+        case .defend: return "Defend or save a piece"
+        case .develop: return "Develop a piece"
+        case .castle: return "Keep my king safe"
+        case .center: return "Control the center"
+        case .pawnPush: return "Push a pawn forward"
+        case .improve: return "Improve a piece"
+        }
+    }
+
+    /// Completes "If you wanted to ...".
+    var verb: String {
+        switch self {
+        case .attack: return "attack a piece"
+        case .kingAttack: return "go after the king"
+        case .winMaterial: return "win material"
+        case .trade: return "trade pieces"
+        case .defend: return "defend"
+        case .develop: return "develop a piece"
+        case .castle: return "keep your king safe"
+        case .center: return "control the center"
+        case .pawnPush: return "push a pawn"
+        case .improve: return "improve a piece"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .attack: return "scope"
+        case .kingAttack: return "crown"
+        case .winMaterial: return "gift"
+        case .trade: return "arrow.left.arrow.right"
+        case .defend: return "shield"
+        case .develop: return "figure.walk"
+        case .castle: return "house"
+        case .center: return "circle.grid.cross"
+        case .pawnPush: return "arrow.up"
+        case .improve: return "wand.and.stars"
+        }
+    }
+}
+
+struct PlanSummary: Codable, Hashable {
+    let style: String
+    let styleDetail: String
+    let focus: String
+    let highlights: [String]
+}
+
+struct LegalMove: Codable, Hashable {
+    let uci: String
+    let san: String
+    let from: String
+    let to: String
+    let fen: String
 }
 
 struct SideSummary: Codable, Hashable {
@@ -95,6 +201,13 @@ struct SideSummary: Codable, Hashable {
     let mistake: Int
     let blunder: Int
     let castledOnMove: Int?
+    let acpl: Double?
+    let estimatedRating: Int?
+    let plan: PlanSummary?
+    let ideaCounts: [String: Int]?
+
+    /// Recomputed from `acpl` so reviews saved under an older formula stay consistent.
+    var playedLikeRating: Int? { acpl.map(CoachView.rating) ?? estimatedRating }
 }
 
 struct GameAnalysis: Codable, Hashable {

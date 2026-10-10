@@ -55,6 +55,20 @@ enum Engine {
         }.value
     }
 
+    private struct LegalEnvelope: Codable {
+        let ok: Bool
+        let moves: [LegalMove]?
+    }
+
+    /// Legal moves in a position (fast; safe to call on the main thread).
+    static func legalMoves(fen: String) -> [LegalMove] {
+        guard let raw = fen.withCString({ cc_legal_moves($0) }) else { return [] }
+        let json = String(cString: raw)
+        cc_free_string(raw)
+        let env = try? decoder.decode(LegalEnvelope.self, from: Data(json.utf8))
+        return env?.moves ?? []
+    }
+
     static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase

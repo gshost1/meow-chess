@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ChessCoachApp: App {
+struct MeowChessApp: App {
     @StateObject private var store = Store()
 
     var body: some Scene {
@@ -16,19 +16,21 @@ struct ChessCoachApp: App {
 
 struct RootView: View {
     @EnvironmentObject var store: Store
-    @State private var tab = UserDefaults.standard.string(forKey: "tab") ?? "games"
 
     var body: some View {
         if store.username.isEmpty {
             WelcomeView()
         } else {
-            TabView(selection: $tab) {
+            TabView(selection: $store.tab) {
                 GamesView()
                     .tabItem { Label("Games", systemImage: "list.bullet.rectangle") }
                     .tag("games")
-                HabitsView()
-                    .tabItem { Label("My Habits", systemImage: "chart.bar.xaxis") }
-                    .tag("habits")
+                CoachView()
+                    .tabItem { Label("Meowy", systemImage: "pawprint.fill") }
+                    .tag("coach")
+                PracticeView()
+                    .tabItem { Label("Practice", systemImage: "puzzlepiece.extension.fill") }
+                    .tag("practice")
                 SettingsView()
                     .tabItem { Label("Settings", systemImage: "gearshape") }
                     .tag("settings")
@@ -44,9 +46,13 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
-            Text("♞\u{FE0E}").font(.system(size: 96))
-            Text("Chess Coach").font(.largeTitle.bold())
-            Text("Reviews your Chess.com games with a chess engine built in Rust, and explains your mistakes in plain English.")
+            HStack(spacing: -10) {
+                CatPiece(piece: "N", mood: .happy).frame(width: 90, height: 90)
+                CatPiece(piece: "Q", mood: .happy).frame(width: 110, height: 110)
+                CatPiece(piece: "p", mood: .normal).frame(width: 80, height: 80)
+            }
+            Text("Meow Chess").font(.largeTitle.bold())
+            Text("Meowy, your cat coach, reviews your Chess.com games with a chess engine built in Rust and explains every move in plain English.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)

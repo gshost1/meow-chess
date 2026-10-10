@@ -1,6 +1,9 @@
 //! C interface used by the iOS app. Every result is a JSON string the caller frees with `cc_free_string`.
 
 use crate::analysis::analyze_pgn;
+use crate::bitboard::square_name;
+use crate::notation::to_san;
+use crate::position::Position;
 use std::ffi::{c_char, c_void, CStr, CString};
 
 pub type ProgressCallback = Option<extern "C" fn(done: u32, total: u32, ctx: *mut c_void)>;
@@ -42,6 +45,37 @@ pub unsafe extern "C" fn cc_analyze_pgn(
     let json = match result {
         Ok(a) => serde_json::json!({ "ok": true, "analysis": a }),
         Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    };
+    into_c(json.to_string())
+}
+
+/// Legal moves in a position: `{"ok":true,"moves":[{"uci","san","from","to","fen"}]}`.
+///
+/// # Safety
+/// `fen` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn cc_legal_moves(fen: *const c_char) -> *mut c_char {
+    let Some(fen) = read(fen) else {
+        return into_c("{\"ok\":false,\"error\":\"no FEN\"}".into());
+    };
+    let json = match Position::from_fen(&fen) {
+        Ok(pos) => {
+            let moves: Vec<_> = pos
+                .legal_moves()
+                .into_iter()
+                .map(|m| {
+                    serde_json::json!({
+                        "uci": m.uci(),
+                        "san": to_san(&pos, m),
+                        "from": square_name(m.from),
+                        "to": square_name(m.to),
+                        "fen": pos.make(m).to_fen(),
+                    })
+                })
+                .collect();
+            serde_json::json!({ "ok": true, "moves": moves })
+        }
+        Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
     };
     into_c(json.to_string())
 }

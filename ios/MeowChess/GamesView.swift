@@ -113,14 +113,14 @@ struct GameDetailView: View {
     var body: some View {
         Group {
             if let analysis = store.analyses[game.id] {
-                ReviewView(analysis: analysis, userIsWhite: game.userColorIsWhite(store.username))
+                ReviewView(analysis: analysis, userIsWhite: game.userColorIsWhite(store.username), gameId: game.id)
             } else {
                 VStack(spacing: 18) {
-                    Text("♞\u{FE0E}").font(.system(size: 64))
-                    Text("Reviewing your game…").font(.title3.bold())
+                    CatPiece(piece: "N", mood: .normal).frame(width: 80, height: 80)
+                    Text("Meowy is reviewing your game…").font(.title3.bold())
                     ProgressView(value: store.progress[game.id] ?? 0)
                         .padding(.horizontal, 48)
-                    Text("The Rust engine is checking every position.")
+                    Text("The Rust engine is checking every position and working out the idea behind each move.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 .task { await store.analyze(game) }
