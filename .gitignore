@@ -1,0 +1,8 @@
+/target
+/ios/build
+/ios/ChessCore.xcframework
+/ios/*.xcodeproj
+/testdata/*.json
+/testdata/*.pgn
+.DS_Store
+xcuserdata/
