@@ -28,6 +28,8 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: Meow Chess connects to an AI model running on your own computer, if you set one up in Settings.
+        # Only HTTPS and the Keychain, both exempt; skips the export compliance question in App Store Connect.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.julius201.meowchess
