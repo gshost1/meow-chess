@@ -3,6 +3,13 @@
 An iPhone app that reviews your Chess.com games and explains your mistakes in plain English.
 The chess engine is written from scratch in Rust and runs on the phone itself.
 
+<p>
+  <img src="screenshots/v2-1-quiz.png" width="200" alt="Idea quiz">
+  <img src="screenshots/v2-3-best.png" width="200" alt="Best move">
+  <img src="screenshots/v2-4-meowy.png" width="200" alt="Meowy coach">
+  <img src="screenshots/v2-5-practice.png" width="200" alt="Practice puzzle">
+</p>
+
 ## Features
 
 - **Games**: downloads your recent Chess.com games and reviews them on the phone.
@@ -52,6 +59,12 @@ ios/       SwiftUI iPhone app (games, review, Meowy coach, practice, settings)
 scripts/   build-ios.sh packages the Rust engine for iPhone; make_sounds.py makes the meows
 ```
 
+## Requirements
+
+- A Mac with Xcode 26 (iOS 17 or later on the phone)
+- Rust, installed with [rustup](https://rustup.rs)
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
+
 ## Commands
 
 Run all of these from this folder.
@@ -68,6 +81,10 @@ cargo run --release -p chess_cli -- review game.pgn julius201
 
 # Regenerate the Xcode project (run after adding Swift files)
 cd ios && xcodegen generate
+
+# End-to-end UI tests on the iPhone 17 Pro simulator (uses the real Chess.com API
+# and a mock AI server on 127.0.0.1:8765)
+./scripts/run-ui-tests.sh
 ```
 
 ## Putting it on your iPhone
@@ -86,3 +103,8 @@ cd ios && xcodegen generate
 
 With a free Apple ID the app stops opening after 7 days; just press Run in Xcode again.
 A paid Apple Developer account ($99/year) removes that limit.
+
+## License
+
+[MIT](LICENSE). Chess.com is a trademark of Chess.com, LLC; this project is not affiliated with it
+and only uses its public API.
