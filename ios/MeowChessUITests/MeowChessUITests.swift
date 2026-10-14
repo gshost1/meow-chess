@@ -134,11 +134,11 @@ final class MeowChessUITests: XCTestCase {
 
         let sound = app.switches["settings-sound"]
         XCTAssertTrue(sound.waitForExistence(timeout: 10))
-        let before = sound.value as? String
+        let before = sound.value as? String ?? "1"
         flip(sound)
-        XCTAssertNotEqual(sound.value as? String, before, "sound switch should flip")
+        XCTAssertTrue(waitForValue(sound, before == "1" ? "0" : "1"), "sound switch should flip")
         flip(sound)
-        XCTAssertEqual(sound.value as? String, before)
+        XCTAssertTrue(waitForValue(sound, before), "sound switch should flip back")
 
         // Add a key and test the connection.
         let key = app.secureTextFields["settings-ai-key"]
