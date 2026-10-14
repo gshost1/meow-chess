@@ -42,6 +42,7 @@ struct ReviewView: View {
             ScrollView {
                 infoCard.padding(.horizontal)
             }
+            .accessibilityIdentifier("info-scroll")
             controls
         }
         .padding(.top, 4)
@@ -54,7 +55,10 @@ struct ReviewView: View {
                 }
                 .disabled(current == nil)
                 .accessibilityLabel("Best move")
+                .accessibilityIdentifier("toolbar-best")
                 Button { showSummary = true } label: { Image(systemName: "chart.pie") }
+                    .accessibilityLabel("Game summary")
+                    .accessibilityIdentifier("toolbar-summary")
             }
         }
         .sheet(isPresented: $showSummary) {
@@ -305,6 +309,7 @@ struct ReviewView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("\(m.numberLabel) \(m.san)  ·  \(mine ? "Your move" : "Opponent")")
                             .font(.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("move-label")
                         Text(m.headline).font(.headline)
                     }
                     Spacer()
@@ -374,9 +379,11 @@ struct ReviewView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(showBest ? .gray : Grade.best.color)
+                    .accessibilityIdentifier("show-best")
                     if showBest, let line = m.bestLineMoves, !line.isEmpty {
                         Text(lineStep == 0 ? "Tap → to play the line" : "Move \(lineStep) of \(line.count): \(line[lineStep - 1].san)")
                             .font(.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("best-line-status")
                     }
                 }
             }
@@ -392,6 +399,7 @@ struct ReviewView: View {
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.18)))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("ask-meowy")
     }
 
     private func section<Content: View>(_ title: String, icon: String, tint: Color = .secondary,
@@ -404,8 +412,8 @@ struct ReviewView: View {
 
     private var controls: some View {
         HStack(spacing: 18) {
-            iconButton("backward.end.fill") { jump(to: 0) }
-            iconButton("chevron.left") { step(-1) }
+            iconButton("backward.end.fill", "First position") { jump(to: 0) }
+            iconButton("chevron.left", "Previous move") { step(-1) }
             Button {
                 if let next = myMistakeIndices.first(where: { $0 > index }) ?? myMistakeIndices.first {
                     jump(to: next)
@@ -416,17 +424,19 @@ struct ReviewView: View {
             .buttonStyle(.borderedProminent)
             .tint(Grade.mistake.color)
             .disabled(myMistakeIndices.isEmpty)
-            iconButton("chevron.right") { step(1) }
-            iconButton("forward.end.fill") { jump(to: analysis.moves.count) }
+            .accessibilityIdentifier("next-mistake")
+            iconButton("chevron.right", "Next move") { step(1) }
+            iconButton("forward.end.fill", "Last position") { jump(to: analysis.moves.count) }
         }
         .padding(.bottom, 8)
     }
 
-    private func iconButton(_ name: String, action: @escaping () -> Void) -> some View {
+    private func iconButton(_ name: String, _ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: name).font(.title3).frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }
 
@@ -459,6 +469,7 @@ struct IdeaQuiz: View {
             HStack(spacing: 8) {
                 CatPiece(piece: "Q", mood: .normal).frame(width: 30, height: 30)
                 Text("Meowy asks: what was your idea with \(move.san)?").font(.subheadline.bold())
+                    .accessibilityIdentifier("quiz-question")
             }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 ForEach(options) { c in
@@ -471,6 +482,7 @@ struct IdeaQuiz: View {
                             .padding(.horizontal, 6)
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityIdentifier("quiz-\(c.rawValue)")
                 }
             }
             if AIConfig.jevReady {
@@ -479,18 +491,23 @@ struct IdeaQuiz: View {
                         .textFieldStyle(.roundedBorder)
                         .submitLabel(.send)
                         .onSubmit(askJev)
+                        .accessibilityIdentifier("quiz-typed")
                     Button(action: askJev) {
                         if asking { ProgressView() } else { Image(systemName: "paperplane.fill") }
                     }
                     .disabled(typed.trimmingCharacters(in: .whitespaces).isEmpty || asking)
+                    .accessibilityLabel("Send to Jev")
+                    .accessibilityIdentifier("quiz-send")
                 }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
             }
             HStack {
                 Button("Not sure") { onAnswer(QuizAnswer(choice: "unsure", matched: nil)) }
+                    .accessibilityIdentifier("quiz-unsure")
                 Spacer()
                 Button("Skip") { onAnswer(QuizAnswer(choice: "skipped", matched: nil)) }
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("quiz-skip")
             }
             .font(.footnote)
         }
@@ -531,6 +548,8 @@ struct QuizFeedback: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill((good ? Grade.best.color : Grade.inaccuracy.color).opacity(0.12)))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("quiz-feedback")
     }
 
     private var feedback: (String, String, Bool) {
@@ -544,7 +563,10 @@ struct QuizFeedback: View {
             if goodMove {
                 return ("😺 Spot on!", "You read your own move right, and it was a good idea. \(ideas)", true)
             }
-            var text = "You read your move right: it does try to \(cat.verb). But the idea backfired: \(move.headline.lowercased())."
+            // Headlines look like "Mistake: loses the rook"; keep only the part after the grade.
+            let what = move.headline.split(separator: ":", maxSplits: 1).last.map { $0.trimmingCharacters(in: .whitespaces) } ?? move.headline
+            let lowered = what.prefix(1).lowercased() + what.dropFirst()
+            var text = "You read your move right: it does try to \(cat.verb). But the idea backfired: \(lowered)\(lowered.hasSuffix(".") ? "" : ".")"
             if !move.playedIsBest {
                 text += bestMatch.map { " \(move.bestSan) also \($0.text), and does it safely." } ?? " \(move.bestSan) was the better move here."
             }

@@ -41,10 +41,12 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Meow sounds", isOn: $soundOn)
+                        .accessibilityIdentifier("settings-sound")
                     Button("Play a meow") { SoundPlayer.shared.play(.check) }.disabled(!soundOn)
                     Picker("Ask \"what was your idea?\"", selection: Binding(get: { store.quizMode }, set: { store.quizMode = $0 })) {
                         ForEach(QuizMode.allCases) { Text($0.label).tag($0) }
                     }
+                    .accessibilityIdentifier("settings-quiz-mode")
                 } header: {
                     Text("Review")
                 } footer: {
@@ -58,7 +60,10 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("API key (leave empty for local models)", text: $chatKey)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        // Not a password: stops iOS from offering to save the API key in Passwords.
+                        .textContentType(.oneTimeCode)
                         .onSubmit { Keychain.save(chatKey, account: "llm") }
+                        .accessibilityIdentifier("settings-ai-key")
                     Button {
                         Task { await test() }
                     } label: {
@@ -68,7 +73,8 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(aiModel.trimmingCharacters(in: .whitespaces).isEmpty || testing)
-                    if let testResult { Text(testResult).font(.caption) }
+                    .accessibilityIdentifier("settings-ai-test")
+                    if let testResult { Text(testResult).font(.caption).accessibilityIdentifier("settings-ai-result") }
                 } header: {
                     Text("Meowy AI (optional)")
                 } footer: {
@@ -77,6 +83,7 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Use Jev to understand your ideas", isOn: $jevEnabled)
+                        .accessibilityIdentifier("settings-jev")
                     if jevEnabled {
                         TextField("Jev model", text: $jevModel)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -84,6 +91,8 @@ struct SettingsView: View {
                             .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                         SecureField("OpenRouter key (empty = use the Meowy AI key)", text: $jevKey)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            // Not a password: stops iOS from offering to save the API key in Passwords.
+                            .textContentType(.oneTimeCode)
                             .onSubmit { Keychain.save(jevKey, account: "jev") }
                         Button("Save key") { Keychain.save(jevKey, account: "jev") }
                     }

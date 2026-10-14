@@ -42,3 +42,25 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  MeowChessUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - MeowChessUITests
+    dependencies:
+      - target: MeowChess
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.julius201.meowchess.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        TEST_TARGET_NAME: MeowChess
+schemes:
+  MeowChess:
+    build:
+      targets:
+        MeowChess: all
+        MeowChessUITests: [test]
+    test:
+      targets:
+        - MeowChessUITests

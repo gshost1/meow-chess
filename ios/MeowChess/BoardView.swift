@@ -16,6 +16,21 @@ struct Square: Hashable {
         guard (0..<8).contains(f), (0..<8).contains(r) else { return nil }
         index = r * 8 + f
     }
+
+    var name: String { String(UnicodeScalar(UInt8(97 + file))) + String(rank + 1) }
+}
+
+func pieceName(_ p: Character) -> String {
+    let color = p.isUppercase ? "white" : "black"
+    let kind = switch p.lowercased() {
+    case "p": "pawn"
+    case "n": "knight"
+    case "b": "bishop"
+    case "r": "rook"
+    case "q": "queen"
+    default: "king"
+    }
+    return "\(color) \(kind)"
 }
 
 struct Arrow: Hashable {
@@ -106,7 +121,7 @@ struct BoardView: View {
             let board = parseBoard(fen)
             ZStack(alignment: .topLeading) {
                 ForEach(0..<64, id: \.self) { i in
-                    squareView(Square(i), cell, occupied: board[i] != nil)
+                    squareView(Square(i), cell, piece: board[i])
                 }
                 ForEach(0..<64, id: \.self) { i in
                     if let p = board[i] {
@@ -114,6 +129,7 @@ struct BoardView: View {
                     }
                 }
                 .allowsHitTesting(false)
+                .accessibilityHidden(true)
                 if let poof = animation?.poof {
                     PoofView(piece: poof.piece, cell: cell)
                         .id("poof-\(animation?.key ?? 0)")
@@ -144,8 +160,9 @@ struct BoardView: View {
         .aspectRatio(1, contentMode: .fit)
     }
 
-    private func squareView(_ sq: Square, _ cell: CGFloat, occupied: Bool) -> some View {
-        ZStack {
+    private func squareView(_ sq: Square, _ cell: CGFloat, piece: Character?) -> some View {
+        let occupied = piece != nil
+        return ZStack {
             Rectangle().fill((sq.file + sq.rank) % 2 == 0 ? BoardTheme.dark : BoardTheme.light)
             if highlights.contains(sq) {
                 Rectangle().fill(BoardTheme.highlight)
@@ -165,6 +182,11 @@ struct BoardView: View {
         .frame(width: cell, height: cell)
         .contentShape(Rectangle())
         .onTapGesture { onTap?(sq) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(piece.map { "\(sq.name), \(pieceName($0))" } ?? sq.name)
+        .accessibilityIdentifier("square-\(sq.name)")
+        .accessibilityAddTraits(onTap != nil ? .isButton : [])
+        .accessibilityAddTraits(selected == sq ? .isSelected : [])
         .position(position(sq, cell))
     }
 

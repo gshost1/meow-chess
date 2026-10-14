@@ -3,12 +3,15 @@ import SwiftUI
 /// Puzzles made from the player's own mistakes: find the move you missed.
 struct PracticeView: View {
     @EnvironmentObject var store: Store
-    @State private var index = 0
+    /// The puzzle on screen. It stays in the list after being solved so its feedback can be read.
+    @State private var currentId: String?
+    /// Bumped to restart the same puzzle when it is the only one left.
+    @State private var round = 0
     @State private var onlyUnsolved = true
 
     private var list: [Puzzle] {
         let all = store.puzzles
-        let unsolved = all.filter { !store.solvedPuzzles.contains($0.id) }
+        let unsolved = all.filter { !store.solvedPuzzles.contains($0.id) || $0.id == currentId }
         return onlyUnsolved && !unsolved.isEmpty ? unsolved : all
     }
 
@@ -27,11 +30,14 @@ struct PracticeView: View {
                             .disabled(!store.progress.isEmpty)
                     }
                 } else {
-                    let i = min(index, puzzles.count - 1)
+                    let i = currentId.flatMap { id in puzzles.firstIndex { $0.id == id } } ?? 0
                     PuzzleBoard(puzzle: puzzles[i], number: i + 1, total: puzzles.count) {
-                        index = (i + 1) % puzzles.count
+                        let next = puzzles[(i + 1) % puzzles.count]
+                        if next.id == puzzles[i].id { round += 1 }
+                        currentId = next.id
                     }
-                    .id(puzzles[i].id)
+                    .id("\(puzzles[i].id)-\(round)")
+                    .onAppear { currentId = puzzles[i].id }
                 }
             }
             .navigationTitle("Practice")
@@ -40,6 +46,7 @@ struct PracticeView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Text("Solved \(store.solvedPuzzles.intersection(store.puzzles.map(\.id)).count)/\(store.puzzles.count)")
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("solved-count")
                 }
             }
         }
@@ -72,6 +79,11 @@ struct PuzzleBoard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Puzzle \(number) of \(total) · vs \(puzzle.opponent)").font(.caption).foregroundStyle(.secondary)
                 Text(prompt).font(.headline).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("puzzle-prompt")
+                if UITesting.enabled {
+                    // Lets UI tests play the right move without knowing chess.
+                    Text(m.bestUci).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("puzzle-answer")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal)
@@ -90,6 +102,8 @@ struct PuzzleBoard: View {
             .padding(.horizontal, 8)
 
             feedback.padding(.horizontal)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("puzzle-feedback")
             Spacer(minLength: 0)
             HStack(spacing: 12) {
                 if status == .solved || status == .revealed {

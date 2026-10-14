@@ -58,7 +58,19 @@ final class Store: ObservableObject {
     private var answersURL: URL { folder.deletingLastPathComponent().appendingPathComponent("answers.json") }
 
     init() {
+        if UITesting.resetRequested { Self.eraseEverything() }
         loadSaved()
+    }
+
+    /// Wipes saved games, reviews, answers, settings and AI keys so UI tests start like a fresh install.
+    private static func eraseEverything() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        for f in (try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil)) ?? [] {
+            try? FileManager.default.removeItem(at: f)
+        }
+        if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
+        Keychain.save("", account: "llm")
+        Keychain.save("", account: "jev")
     }
 
     private func loadSaved() {
@@ -182,6 +194,11 @@ final class Store: ObservableObject {
         }
         analyses = [:]
     }
+}
+
+enum UITesting {
+    static var enabled: Bool { ProcessInfo.processInfo.arguments.contains("-uiTesting") }
+    static var resetRequested: Bool { ProcessInfo.processInfo.arguments.contains("-uiTestReset") }
 }
 
 enum QuizMode: String, CaseIterable, Identifiable {
