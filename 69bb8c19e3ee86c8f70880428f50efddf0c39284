@@ -1,0 +1,6 @@
+UI tests validated 2026-10-14 after a Mac restart restored simulator touch input.
+scripts/run-ui-tests.sh, iPhone 17 Pro simulator (iOS 26.5), Xcode 26.6, run at 459480a:
+- test1_FreshInstallJourney passed (86.0 s)
+- test2_SettingsAndOptionalAI passed (79.2 s)
+** TEST SUCCEEDED **
+Result bundle (local): UITests-20261014-131837.xcresult
