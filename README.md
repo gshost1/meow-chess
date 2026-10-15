@@ -104,6 +104,10 @@ cd ios && xcodegen generate
 With a free Apple ID the app stops opening after 7 days; just press Run in Xcode again.
 A paid Apple Developer account ($99/year) removes that limit.
 
+## Privacy
+
+The app collects nothing for the developer; see [PRIVACY.md](PRIVACY.md).
+
 ## License
 
 [MIT](LICENSE). Chess.com is a trademark of Chess.com, LLC; this project is not affiliated with it
