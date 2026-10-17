@@ -3,7 +3,7 @@
 
 use crate::analysis::{balance, captured_kind, fork_targets, is_loose, settled_balance, walk};
 use crate::bitboard::*;
-use crate::eval::HUMAN_VALUE;
+use crate::eval::{ATTACKER_VALUE, HUMAN_VALUE};
 use crate::notation::to_san;
 use crate::position::*;
 use crate::search::{mate_in, Limits, Searcher};
@@ -251,7 +251,7 @@ pub fn move_ideas(
         let tk = piece_kind(after.board[t as usize]);
         if loose {
             add(&mut ideas, "attack", format!("attacks {}, threatening to win it", desc(&after, t)));
-        } else if HUMAN_VALUE[tk as usize] > HUMAN_VALUE[kind as usize] {
+        } else if ATTACKER_VALUE[tk as usize] > ATTACKER_VALUE[kind as usize] {
             add(&mut ideas, "attack", format!("attacks {} with a cheaper piece", desc(&after, t)));
         } else {
             add(&mut ideas, "attack", format!("puts pressure on {}", desc(&after, t)));
@@ -485,6 +485,21 @@ mod tests {
         assert!(kinds(&v).contains(&"check"), "{v:?}");
         assert!(!kinds(&v).contains(&"fork"), "{v:?}");
         assert!(!v.iter().any(|i| i.text.contains("fork")), "{v:?}");
+    }
+
+    #[test]
+    fn king_fork_on_protected_pieces_rejected() {
+        // The knight on b5 is guarded by the a6 pawn, the rook on d5 by the e6 pawn.
+        let v = ideas("7k/8/p3p3/1n1r4/8/2K5/8/8 w - - 0 1", "Kc4");
+        assert!(!kinds(&v).contains(&"fork"), "{v:?}");
+        assert!(!v.iter().any(|i| i.text.contains("threatening to win it")), "{v:?}");
+    }
+
+    #[test]
+    fn king_attacks_undefended_piece() {
+        // The knight on d5 has no defender, so the king really can win it.
+        let v = ideas("7k/8/8/3n4/8/2K5/8/8 w - - 0 1", "Kc4");
+        assert!(v.iter().any(|i| i.kind == "attack" && i.text.contains("knight on d5")), "{v:?}");
     }
 
     #[test]

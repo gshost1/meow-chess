@@ -1,7 +1,7 @@
 //! Game review: grade every move and explain mistakes in beginner-friendly language.
 
 use crate::bitboard::*;
-use crate::eval::{material_points, HUMAN_VALUE};
+use crate::eval::{material_points, ATTACKER_VALUE, HUMAN_VALUE};
 use crate::notation::{parse_pgn, to_san, PgnGame};
 use crate::position::*;
 use crate::search::{is_mate_score, mate_in, Limits, SearchResult, Searcher, MATE};
@@ -271,8 +271,14 @@ pub(crate) fn is_loose(pos: &Position, sq: u8) -> bool {
         return true;
     }
     // The king counts as an attacker only when nothing defends the target.
-    let cheapest = Squares(attackers).map(|s| HUMAN_VALUE[piece_kind(pos.board[s as usize]) as usize]).min().unwrap_or(99);
-    cheapest < HUMAN_VALUE[piece_kind(pc) as usize]
+    let cheapest = Squares(attackers)
+        .filter(|&s| piece_kind(pos.board[s as usize]) != KING)
+        .map(|s| ATTACKER_VALUE[piece_kind(pos.board[s as usize]) as usize])
+        .min();
+    match cheapest {
+        Some(v) => v < ATTACKER_VALUE[piece_kind(pc) as usize],
+        None => false,
+    }
 }
 
 /// Pieces of the side not to move that the piece on `sq` attacks in a forking way.
@@ -282,7 +288,7 @@ pub(crate) fn fork_targets(pos: &Position, sq: u8) -> Vec<u8> {
         return vec![];
     }
     let me = piece_color(pc);
-    let my_value = HUMAN_VALUE[piece_kind(pc) as usize];
+    let my_value = ATTACKER_VALUE[piece_kind(pc) as usize];
     // A forking piece that just gets taken for free is not a real fork, check or not.
     let occ = pos.all();
     if pos.attackers_to(sq, me ^ 1, occ) != 0 && pos.attackers_to(sq, me, occ) == 0 {
@@ -307,7 +313,8 @@ pub(crate) fn fork_targets(pos: &Position, sq: u8) -> Vec<u8> {
             if can_answer & bit(t) != 0 {
                 return false;
             }
-            HUMAN_VALUE[k as usize] > my_value || pos.attackers_to(t, me ^ 1, occ) == 0
+            // A king only "forks" pieces it can really win, so they must be undefended.
+            ATTACKER_VALUE[k as usize] > my_value || pos.attackers_to(t, me ^ 1, occ) == 0
         })
         .collect();
     targets.sort_by_key(|&t| {
@@ -493,7 +500,7 @@ fn explain(c: &Ctx) -> Explained {
                 // Did the reply fork rather than capture? Handled below; this is a direct capture.
                 let defended = c.after.attackers_to(m.to, mover, c.after.all()) != 0;
                 let attacker_kind = piece_kind(c.after.board[m.from as usize]);
-                let cheaper_attacker = HUMAN_VALUE[attacker_kind as usize] < HUMAN_VALUE[kind as usize];
+                let cheaper_attacker = ATTACKER_VALUE[attacker_kind as usize] < ATTACKER_VALUE[kind as usize];
                 if m.to == c.played.to && c.played.flags & FLAG_CASTLE == 0 && (!defended || cheaper_attacker) {
                     tags.push("hung_piece");
                     let text = if defended {
@@ -1051,6 +1058,20 @@ mod tests {
         assert!(nf6.tags.contains(&"allowed_mate"), "{:?}", nf6);
         assert!(nf6.explanation.contains("Qxf7#"));
         assert_eq!(a.moves[6].headline, "Checkmate!");
+    }
+
+    #[test]
+    fn protected_piece_not_loose_to_king() {
+        // The rook on d5 is guarded by the e6 pawn, so the lone attacking king cannot win it.
+        let pos = Position::from_fen("7k/8/4p3/3r4/2K5/8/8/8 w - - 0 1").unwrap();
+        assert!(!is_loose(&pos, parse_square("d5").unwrap()));
+    }
+
+    #[test]
+    fn king_attacks_undefended_piece_is_loose() {
+        // Nothing guards the rook on d5, so the attacking king wins it.
+        let pos = Position::from_fen("7k/8/8/3r4/2K5/8/8/8 w - - 0 1").unwrap();
+        assert!(is_loose(&pos, parse_square("d5").unwrap()));
     }
 
     #[test]

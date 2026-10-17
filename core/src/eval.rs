@@ -11,6 +11,10 @@ const PHASE_WEIGHT: [i32; 6] = [0, 1, 1, 2, 4, 0];
 /// Simple piece values used for describing material to a human (pawn = 1).
 pub const HUMAN_VALUE: [i32; 6] = [1, 3, 3, 5, 9, 0];
 
+/// Piece values used when asking "can this attacker win that target?".
+/// The king is priceless: a king never wins a defended piece and is never a bargain attacker.
+pub const ATTACKER_VALUE: [i32; 6] = [1, 3, 3, 5, 9, 10_000];
+
 // Tables are written from White's point of view with rank 8 on top,
 // so a White piece on `sq` reads index `sq ^ 56`.
 #[rustfmt::skip]
