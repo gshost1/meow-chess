@@ -194,6 +194,24 @@ fn castle_mask(sq: u8) -> u8 {
     }
 }
 
+/// True when a pawn of the side to move could really capture `sq` en passant:
+/// the square is on the right rank for the side to move, it is empty, an enemy
+/// pawn sits directly behind it, and one of our pawns attacks it. `make` only
+/// records such squares after a double push, so `from_fen` must agree, or the
+/// same position reached by moves and by a FEN would hash differently (and a
+/// bogus square would panic when the "capture" removes an empty square).
+fn ep_capturable(p: &Position, sq: u8) -> bool {
+    let enemy = p.side ^ 1;
+    let behind = match (p.side, sq / 8) {
+        (WHITE, 5) => sq - 8, // black just double-pushed to the rank below the ep square
+        (BLACK, 2) => sq + 8, // white just double-pushed to the rank above it
+        _ => return false,
+    };
+    p.board[sq as usize] == EMPTY
+        && p.board[behind as usize] == make_piece(enemy, PAWN)
+        && pawn_attacks(enemy, sq) & p.pieces(p.side, PAWN) != 0
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Position {
     pub bb: [Bitboard; 12],
@@ -283,7 +301,14 @@ impl Position {
                 _ => 0,
             };
         }
-        p.ep = if parts[3] == "-" { None } else { parse_square(parts[3]) };
+        p.ep = if parts[3] == "-" {
+            None
+        } else {
+            // Drop ep squares that cannot actually be captured; `make` never
+            // records those after a double push, and "capturing" one off an
+            // empty square would panic.
+            parse_square(parts[3]).filter(|&sq| ep_capturable(&p, sq))
+        };
         p.halfmove = parts.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
         p.fullmove = parts.get(5).and_then(|s| s.parse().ok()).unwrap_or(1);
         if (p.bb[make_piece(WHITE, KING) as usize]).count_ones() != 1
@@ -716,5 +741,39 @@ mod tests {
             let q = p.make(m);
             assert_eq!(q.hash, q.compute_hash(), "move {m}");
         }
+    }
+
+    #[test]
+    fn bogus_ep_square_is_ignored() {
+        // No white pawn on e4, so e3 can never be captured en passant.
+        let p =
+            Position::from_fen("rnbqkbnr/pppppppp/8/8/3p4/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
+        // Must not panic: the bogus square used to be "captured" off an empty square.
+        assert!(!p.legal_moves().is_empty());
+        assert_eq!(p.ep, None);
+    }
+
+    #[test]
+    fn ep_hash_matches_fen_after_double_push() {
+        let start = Position::startpos();
+        let e2e4 = *start.legal_moves().iter().find(|m| m.uci() == "e2e4").unwrap();
+        let after = start.make(e2e4);
+        let loaded =
+            Position::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
+        assert_eq!(loaded.ep, after.ep);
+        assert_eq!(loaded.hash, after.hash);
+    }
+
+    #[test]
+    fn capturable_ep_square_is_kept() {
+        // Black really can take on e3 here: the white pawn just double-pushed to e4.
+        let p =
+            Position::from_fen("rnbqkbnr/pppppppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
+        assert_eq!(p.ep, parse_square("e3"));
+        let moves = p.legal_moves();
+        let ep = *moves.iter().find(|m| m.flags & FLAG_EP != 0).expect("ep capture");
+        assert_eq!(ep.uci(), "d4e3");
+        let after = p.make(ep);
+        assert_eq!(after.board[parse_square("e4").unwrap() as usize], EMPTY);
     }
 }
