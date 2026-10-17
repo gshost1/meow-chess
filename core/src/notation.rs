@@ -95,6 +95,31 @@ pub fn parse_move(pos: &Position, text: &str) -> Option<Move> {
         if normalize(&(full.clone() + &promo)) == want || normalize(&(full.replace('x', "") + &promo)) == want {
             return Some(m);
         }
+
+        if piece_kind(pc) != PAWN {
+            let piece = kind_letter(piece_kind(pc)).to_string();
+            let suffix = format!(
+                "{}{}",
+                if m.is_capture() { "x" } else { "" },
+                square_name(m.to)
+            );
+            if let Some(disambiguation) = want
+                .strip_prefix(&piece)
+                .and_then(|rest| rest.strip_suffix(&suffix))
+            {
+                let from_file = b'a' + file_of(m.from);
+                let from_rank = b'1' + rank_of(m.from);
+                let matches_from_square = match disambiguation.as_bytes() {
+                    [file, rank] => *file == from_file && *rank == from_rank,
+                    [file @ b'a'..=b'h'] => *file == from_file,
+                    [rank @ b'1'..=b'8'] => *rank == from_rank,
+                    _ => false,
+                };
+                if !disambiguation.is_empty() && matches_from_square {
+                    return Some(m);
+                }
+            }
+        }
     }
     None
 }
@@ -224,6 +249,24 @@ mod tests {
         assert_eq!(sans[18], "d4");
         assert_eq!(sans[19], "Nbd7");
         assert_eq!(sans[8], "O-O");
+    }
+
+    #[test]
+    fn accepts_file_and_rank_move_disambiguation() {
+        let mut pos = Position::startpos();
+        for text in ["e4", "e5"] {
+            let m = parse_move(&pos, text).unwrap();
+            pos = pos.make(m);
+        }
+
+        for text in ["Ngf3", "N1f3", "Ng1f3", "Nf3"] {
+            assert_eq!(
+                parse_move(&pos, text).map(|m| m.uci()),
+                Some("g1f3".to_string()),
+                "{text} should resolve to g1f3"
+            );
+        }
+        assert!(parse_move(&pos, "Nbf3").is_none());
     }
 
     #[test]
