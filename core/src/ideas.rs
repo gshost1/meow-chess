@@ -479,6 +479,15 @@ mod tests {
     }
 
     #[test]
+    fn fork_rejected_when_checker_capturable() {
+        // The knight gives check, but it has no defender and Black can just take it with Qxc7.
+        let v = ideas("r2qk3/8/8/1N6/8/8/8/4K3 w - - 0 1", "Nc7+");
+        assert!(kinds(&v).contains(&"check"), "{v:?}");
+        assert!(!kinds(&v).contains(&"fork"), "{v:?}");
+        assert!(!v.iter().any(|i| i.text.contains("fork")), "{v:?}");
+    }
+
+    #[test]
     fn mate_threat_detected() {
         // Qh5 with Bc4 threatens Qxf7#.
         let v = ideas("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/8/PPPP1PPP/RNBQK1NR w KQkq - 2 3", "Qh5");

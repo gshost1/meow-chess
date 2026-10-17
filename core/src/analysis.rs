@@ -270,6 +270,7 @@ pub(crate) fn is_loose(pos: &Position, sq: u8) -> bool {
     if defenders == 0 {
         return true;
     }
+    // The king counts as an attacker only when nothing defends the target.
     let cheapest = Squares(attackers).map(|s| HUMAN_VALUE[piece_kind(pos.board[s as usize]) as usize]).min().unwrap_or(99);
     cheapest < HUMAN_VALUE[piece_kind(pc) as usize]
 }
@@ -282,11 +283,18 @@ pub(crate) fn fork_targets(pos: &Position, sq: u8) -> Vec<u8> {
     }
     let me = piece_color(pc);
     let my_value = HUMAN_VALUE[piece_kind(pc) as usize];
-    // A forking piece that just gets taken for free is not a real fork.
+    // A forking piece that just gets taken for free is not a real fork, check or not.
     let occ = pos.all();
-    if pos.attackers_to(sq, me ^ 1, occ) != 0 && pos.attackers_to(sq, me, occ) == 0 && !pos.in_check() {
+    if pos.attackers_to(sq, me ^ 1, occ) != 0 && pos.attackers_to(sq, me, occ) == 0 {
         return vec![];
     }
+    // When the forking piece gives check, a piece that can answer the check (step aside,
+    // block or capture the forker) saves itself, so it is not really forked (Qb5+ met by Nd7).
+    let can_answer = if pos.in_check() {
+        pos.legal_moves().iter().fold(0u64, |bb, &m| bb | bit(m.from))
+    } else {
+        0
+    };
     let mut targets: Vec<u8> = Squares(pos.attacks_from(sq) & pos.occ[me ^ 1])
         .filter(|&t| {
             let k = piece_kind(pos.board[t as usize]);
@@ -294,6 +302,9 @@ pub(crate) fn fork_targets(pos: &Position, sq: u8) -> Vec<u8> {
                 return true;
             }
             if k == PAWN {
+                return false;
+            }
+            if can_answer & bit(t) != 0 {
                 return false;
             }
             HUMAN_VALUE[k as usize] > my_value || pos.attackers_to(t, me ^ 1, occ) == 0
