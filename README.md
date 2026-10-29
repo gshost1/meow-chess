@@ -3,6 +3,10 @@
 An iPhone app that reviews your Chess.com games and explains your mistakes in plain English.
 The chess engine is written from scratch in Rust and runs on the phone itself.
 
+**At a glance:** a SwiftUI iPhone app (about 3,900 lines of Swift) on top of a from-scratch Rust chess engine (about 3,700 lines, 30 tests). Move generation is checked with perft. The engine runs on the phone with no server, and the Rust code is called from Swift through a C interface.
+
+**Skills shown:** chess-engine design (bitboards, alpha-beta search with iterative deepening, a transposition table, null-move pruning and late-move reductions), Rust-to-Swift FFI, SwiftUI, Keychain-based key storage, and UI tests against the real Chess.com API.
+
 <p>
   <img src="screenshots/v2-1-quiz.png" width="200" alt="Idea quiz">
   <img src="screenshots/v2-3-best.png" width="200" alt="Best move">
