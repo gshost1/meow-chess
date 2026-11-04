@@ -35,7 +35,7 @@ final class MeowChessUITests: XCTestCase {
         let pieces = app.segmentedControls["piece-style"]
         XCTAssertTrue(pieces.exists)
         XCTAssertTrue(pieces.buttons["Cat pieces"].isSelected)
-        pieces.buttons["Classic pieces"].tap()
+        select(pieces.buttons["Classic pieces"])
         XCTAssertTrue(pieces.buttons["Classic pieces"].isSelected)
         capture("signup-piece-picker")
         name.tap()
@@ -53,7 +53,6 @@ final class MeowChessUITests: XCTestCase {
         let accuracies = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Accuracy '"))
         XCTAssertEqual(accuracies.count, 2)
         for label in accuracies.allElementsBoundByIndex { XCTAssertFalse(label.label.contains("%")) }
-        capture("review-no-tab-bar")
         capture("classic-board")
 
         // Board is drawn with all 32 pieces in the right places.
@@ -164,7 +163,7 @@ final class MeowChessUITests: XCTestCase {
         let pieces = app.segmentedControls["piece-style"]
         scrollTo(pieces)
         XCTAssertTrue(pieces.buttons["Classic pieces"].isSelected, "signup choice should persist")
-        pieces.buttons["Cat pieces"].tap()
+        select(pieces.buttons["Cat pieces"])
         XCTAssertTrue(pieces.buttons["Cat pieces"].isSelected)
 
         let mode = app.buttons["settings-quiz-mode"]
@@ -201,8 +200,8 @@ final class MeowChessUITests: XCTestCase {
         for _ in 0..<6 where !typed.exists { app.buttons["Previous move"].tap() }
         XCTAssertTrue(typed.waitForExistence(timeout: 5), "an unanswered move should offer the typed answer")
         typed.tap()
-        typed.typeText("I wanted to attack the queen")
-        app.buttons["quiz-send"].tap()
+        // The keyboard's Send key submits, the same as the paper-plane button.
+        typed.typeText("I wanted to attack the queen\n")
         let feedback = quizFeedback()
         XCTAssertTrue(feedback.waitForExistence(timeout: 20), "Jev answer should show feedback")
         XCTAssertTrue(feedback.label.contains("I wanted to attack the queen"), feedback.label)
@@ -244,17 +243,17 @@ final class MeowChessUITests: XCTestCase {
         XCTAssertTrue(latest.waitForExistence(timeout: 5))
         XCTAssertFalse(latest.isEnabled, "unfinished recent games cannot open")
         capture("games-tabs-pending")
-        tabs.buttons["Bullet"].tap()
+        select(tabs.buttons["Bullet"])
         XCTAssertTrue(app.staticTexts["vs BulletCat"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["vs RapidCat"].firstMatch.exists)
-        tabs.buttons["Blitz"].tap()
+        select(tabs.buttons["Blitz"])
         XCTAssertTrue(app.staticTexts["vs BlitzCat"].firstMatch.waitForExistence(timeout: 5))
         app.terminate()
         app.launchArguments = ["-uiTesting", "-username", user, "-strength", "fast"]
         app.launch()
         XCTAssertTrue(tabs.waitForExistence(timeout: 15))
         XCTAssertTrue(tabs.buttons["Blitz"].isSelected, "time-control choice persists")
-        tabs.buttons["Rapid"].tap()
+        select(tabs.buttons["Rapid"])
         openFirstGame()
         waitForReview()
         XCTAssertFalse(app.tabBars.firstMatch.exists)
@@ -283,7 +282,7 @@ final class MeowChessUITests: XCTestCase {
         let tabs = app.segmentedControls["games-time-control"]
         XCTAssertTrue(tabs.waitForExistence(timeout: 15))
         XCTAssertTrue(tabs.buttons["Daily"].exists)
-        tabs.buttons["Daily"].tap()
+        select(tabs.buttons["Daily"])
         XCTAssertTrue(app.staticTexts["vs DailyCat"].firstMatch.waitForExistence(timeout: 5))
         let older = app.buttons["game-fixture-11"]
         XCTAssertTrue(older.isEnabled, "older games can open before analysis")
@@ -322,9 +321,24 @@ final class MeowChessUITests: XCTestCase {
     }
 
     /// Taps the switch knob itself; tapping the middle of a SwiftUI toggle row hits the label.
+    /// Taps again once if the first tap landed while the screen was still updating.
     private func flip(_ toggle: XCUIElement) {
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
-            .withOffset(CGVector(dx: -30, dy: 0)).tap()
+        let before = toggle.value as? String
+        for _ in 0..<2 {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+                .withOffset(CGVector(dx: -30, dy: 0)).tap()
+            let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value != %@", before ?? ""), object: toggle)
+            if XCTWaiter().wait(for: [changed], timeout: 2) == .completed { return }
+        }
+    }
+
+    /// Taps a segment and waits for it to be selected; the list redraws often while reviews run.
+    private func select(_ segment: XCUIElement) {
+        for _ in 0..<3 {
+            segment.tap()
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: segment)
+            if XCTWaiter().wait(for: [selected], timeout: 2) == .completed { return }
+        }
     }
 
     private func openFirstGame() {

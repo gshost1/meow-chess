@@ -27,6 +27,8 @@ final class Store: ObservableObject {
     }
     @AppStorage("strength") var strengthRaw: String = AnalysisStrength.normal.rawValue
     @AppStorage("quizMode") var quizModeRaw: String = QuizMode.key.rawValue
+    /// The mode the review screen's Questions switch restores when turned back on.
+    @AppStorage("quizModeWhenOn") var quizModeWhenOnRaw: String = QuizMode.key.rawValue
 
     @AppStorage("pieceStyle") var pieceStyleRaw: String = PieceStyle.cat.rawValue {
         didSet { objectWillChange.send() }
@@ -40,6 +42,9 @@ final class Store: ObservableObject {
     }
 
     @Published private(set) var pendingReviews: Set<String> = []
+    /// Recent games whose automatic review failed; they open normally so the review can be retried.
+    @Published private(set) var failedReviews: Set<String> = []
+    private var loadingUser: String?
     private var reviewingRecent = false
     private var automaticallyAttempted: Set<String> = []
 
@@ -54,8 +59,13 @@ final class Store: ObservableObject {
 
     var quizMode: QuizMode {
         get { QuizMode(rawValue: quizModeRaw) ?? .key }
-        set { quizModeRaw = newValue.rawValue; objectWillChange.send() }
+        set {
+            quizModeRaw = newValue.rawValue
+            if newValue != .off { quizModeWhenOnRaw = newValue.rawValue }
+            objectWillChange.send()
+        }
     }
+    var quizModeWhenOn: QuizMode { QuizMode(rawValue: quizModeWhenOnRaw).flatMap { $0 == .off ? nil : $0 } ?? .key }
 
     var strength: AnalysisStrength {
         get { AnalysisStrength(rawValue: strengthRaw) ?? .normal }
@@ -122,10 +132,13 @@ final class Store: ObservableObject {
 
     func refreshGames() async {
         let user = username.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !user.isEmpty, !loadingGames else { return }
+        guard !user.isEmpty, loadingUser != user else { return }
+        loadingUser = user
         loadingGames = true
         errorMessage = nil
-        defer { loadingGames = false }
+        defer {
+            if loadingUser == user { loadingUser = nil; loadingGames = false }
+        }
         do {
             let archives: ChessComArchives = try await fetch("https://api.chess.com/pub/player/\(user)/games/archives")
             var collected: [ChessComGame] = []
@@ -135,10 +148,13 @@ final class Store: ObservableObject {
                 collected += month.games.filter { ($0.rules ?? "chess") == "chess" && $0.pgn != nil }
                 if collected.count >= 40 { break }
             }
+            // The username changed while this was loading: keep the newer user's games.
+            guard loadingUser == user else { return }
             games = collected.sorted { ($0.endTime ?? 0) > ($1.endTime ?? 0) }
             startRecentAnalysis()
             if let data = try? JSONEncoder().encode(games) { try? data.write(to: gamesCacheURL) }
         } catch {
+            guard loadingUser == user else { return }
             errorMessage = "Couldn't load games for \(user). Check the username and your connection."
         }
     }
@@ -168,12 +184,15 @@ final class Store: ObservableObject {
                 pgn: pgn, username: username, msPerMove: strength.msPerMove
             ) { p in
                 Task { @MainActor in
-                    if self.progress[id] != nil { self.progress[id] = p }
+                    guard let old = self.progress[id] else { return }
+                    if p - old >= 0.02 || p >= 1 { self.progress[id] = p }
                 }
             }
             try data.write(to: folder.appendingPathComponent("\(id).json"), options: .atomic)
             analyses[id] = analysis
+            failedReviews.remove(id)
         } catch {
+            failedReviews.insert(id)
             errorMessage = error.localizedDescription
         }
     }
@@ -202,7 +221,7 @@ final class Store: ObservableObject {
     }
 
     func reviewIsRequired(_ game: ChessComGame) -> Bool {
-        analyses[game.id] == nil && (games.prefix(10).contains { $0.id == game.id } || isAnalyzing(game))
+        analyses[game.id] == nil && !failedReviews.contains(game.id) && (games.prefix(10).contains { $0.id == game.id } || isAnalyzing(game))
     }
 
     // MARK: Idea quiz and puzzles

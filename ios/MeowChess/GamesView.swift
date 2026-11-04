@@ -30,7 +30,7 @@ struct GamesView: View {
                     .opacity(store.reviewIsRequired(game) ? 0.45 : 1)
                     .accessibilityIdentifier("game-\(game.id)")
                 }
-                if store.errorMessage != nil {
+                if !store.failedReviews.isEmpty {
                     Button("Retry unfinished reviews") { Task { await store.analyzeRecent(10) } }
                 }
             }

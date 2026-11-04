@@ -100,31 +100,15 @@ Status key: `[x]` done, `[~]` in progress, `[ ]` not started.
   The pending-games screenshot uses deterministic debug fixtures and the real engine.
 - [x] Reviewed the implementation diff, including asset attribution and persisted-review
   handling. No Rust, authentication, secret handling, or SoundPlayer trigger changes.
-- [ ] Make the complete UI suite green. Stopped after the second honest full test attempt,
-  as instructed: 3 unit tests and the fresh-install UI journey passed; 3 UI tests failed.
-  The first attempt also exposed an offscreen Settings sound switch (fixed in the tests).
-  Mock AI moved to port 18765 because a pre-existing HTTP server occupies 8765.
-
-### Remaining failures (verbatim, final run)
-
-Command: `MEOW_BUILD="$PWD/ios/build/UITestBuild" scripts/run-ui-tests.sh`
-Result: `** TEST FAILED **` (4 passed, 3 failed across unit and UI targets).
-Local result bundle: `ios/build/UITestBuild/UITests-20261103-205133.xcresult`.
-Local full log: `ios/build/UITestBuild/xcodebuild.log`.
-
-```text
-MeowChessUITests.swift:205: error: -[MeowChessUITests.MeowChessUITests test2_SettingsAndOptionalAI] : Failed to not hittable: Button, {{351.0, 638.0}, {21.0, 19.3}}, identifier: 'quiz-send', label: 'Send to Jev'
-MeowChessUITests.swift:264: error: -[MeowChessUITests.MeowChessUITests test3_TimeControlsAndReviewDefaults] : XCTAssertTrue failed
-MeowChessUITests.swift:287: error: -[MeowChessUITests.MeowChessUITests test4_DailyTabOnlyWhenNeeded] : XCTAssertTrue failed
-```
-
-- Settings/AI test: the keyboard obscures the Jev send control with the full-width board.
-  The review needs a smaller board or another layout adjustment while the keyboard is open.
-- Questions test: the compact review toggle still does not change from on to off in the UI test.
-- Daily test: Daily exists, but tapping it leaves Rapid selected and no Daily row appears.
-  Tab changes also appeared inconsistent after relaunch in the persistence test. Investigate
-  control hit testing and AppStorage in Store; the underlying cause is not confirmed.
-- Visual follow-up: disabled rows are quite dim, and the black classic preview has low contrast
-  against the welcome screen background.
-- [ ] Coordinator follow-up: fix the remaining controls/layout issues and rerun UI tests.
-- Branch is pushed without a PR; do not merge or deploy this incomplete test state.
+- [x] Make the complete UI suite green. Root cause of the flaky taps: every piece observed the
+  whole Store, so each analysis progress tick redrew every board and row. Pieces now read the
+  setting directly and progress is throttled to 2% steps. The board also shrinks when the keyboard
+  is up so the typed answer stays visible. Mock AI is on port 18765 (8765 was taken).
+  `MEOW_BUILD="$PWD/ios/build/UITestBuild" scripts/run-ui-tests.sh`: `** TEST SUCCEEDED **`,
+  3 unit tests and 4 UI tests passed.
+- [x] Review fixes: a failed automatic review no longer locks the game, the retry button shows
+  only after a failed review, a username change mid-refresh keeps the new user's games, the review
+  Questions switch restores the previous mode, and mistake ranking no longer mixes units.
+- [ ] Visual follow-up: disabled rows are quite dim, and the black classic preview piece has low
+  contrast against the dark welcome screen.
+- [ ] Owner to listen to the new sounds on a phone.

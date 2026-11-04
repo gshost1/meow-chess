@@ -234,9 +234,12 @@ struct GameAnalysis: Codable, Hashable {
                 if lhs.playedIsBest != rhs.playedIsBest { return lhs.playedIsBest }
                 return lhs.ply < rhs.ply
             }.first
-        let bad = mine.filter { $0.grade.isBad }.sorted { lhs, rhs in
-            let l = lhs.cpLoss ?? Int(lhs.winDrop * 1000)
-            let r = rhs.cpLoss ?? Int(rhs.winDrop * 1000)
+        let badMoves = mine.filter { $0.grade.isBad }
+        // Older saved reviews may lack cp_loss; then rank every move by win-chance drop so the scales never mix.
+        let useCp = badMoves.allSatisfy { $0.cpLoss != nil }
+        let bad = badMoves.sorted { lhs, rhs in
+            let l = useCp ? Double(lhs.cpLoss!) : lhs.winDrop
+            let r = useCp ? Double(rhs.cpLoss!) : rhs.winDrop
             return l == r ? lhs.ply < rhs.ply : l > r
         }
         // Three mistakes take priority; otherwise fill one remaining slot with a good tactic.

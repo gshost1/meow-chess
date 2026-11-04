@@ -38,13 +38,14 @@ struct ReviewView: View {
                         })
                 }
                 .padding(.horizontal, 2)
-                .frame(height: max(0, geometry.size.width - 32))
+                // Full width normally; shrinks when the keyboard is up so the typed answer stays visible.
+                .frame(height: max(0, min(geometry.size.width - 32, geometry.size.height * 0.6)))
                 playerStrip(white: userIsWhite)
                 HStack {
                     moveStrip
                     Toggle("Questions", isOn: Binding(
                         get: { store.quizMode != .off },
-                        set: { store.quizMode = $0 ? .key : .off }
+                        set: { store.quizMode = $0 ? store.quizModeWhenOn : .off }
                     ))
                     .font(.caption)
                     .fixedSize()

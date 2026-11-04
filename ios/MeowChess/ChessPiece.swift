@@ -1,14 +1,15 @@
 import SwiftUI
 
 /// Shared by the board, move animations, captured pieces, and piece previews.
+/// Reads the setting itself rather than observing Store, so analysis progress updates don't redraw every piece.
 struct ChessPiece: View {
-    @EnvironmentObject var store: Store
+    @AppStorage("pieceStyle") private var pieceStyleRaw: String = PieceStyle.cat.rawValue
     let piece: Character
     var mood: PieceMood = .normal
 
     var body: some View {
         Group {
-            if store.pieceStyle == .classic {
+            if PieceStyle(rawValue: pieceStyleRaw) == .classic {
                 Image("classic-\(piece.isUppercase ? "w" : "b")\(piece.uppercased())")
                     .resizable()
                     .scaledToFit()
