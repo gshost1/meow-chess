@@ -313,12 +313,12 @@ struct PoofView: View {
                 .scaleEffect(reduceMotion ? 1 : 1 + 0.08 * p)
                 .opacity(Double(1 - p))
             ForEach(0..<(reduceMotion ? 0 : 4), id: \.self) { i in
-                let angle = Double(i) / 6 * 2 * .pi
+                let angle = Double(i) / 4 * 2 * .pi
                 Text("✦")
                     .font(.system(size: cell * 0.22))
                     .foregroundStyle(i.isMultiple(of: 2) ? Color.yellow : Color.white)
                     .offset(x: cos(angle) * cell * 0.55 * p, y: sin(angle) * cell * 0.55 * p)
-                    .opacity(Double(p < 0.15 ? p / 0.15 : 1 - p))
+                    .opacity(Double(sin(.pi * p)))
             }
         }
         .onAppear {

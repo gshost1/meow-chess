@@ -145,3 +145,19 @@ saved JSON so old reviews still load; the app just stops showing it.
 - [x] Checked on MeowQA-1: the quiz fits without scrolling, Rapid shows the empty-filter message,
   a missing player shows only the not-found message, and Meowy shows accuracy without a rating
   estimate. Shots are in `screenshots/qa-fixes/`.
+
+## Practice and board polish (November 4, 2026)
+
+- [x] Quick shared board glide, capture timing, castling and clearer highlights.
+- [x] Three original sound packs, persisted Settings picker and Mac previews.
+- [x] Wrong-move demonstration with engine reply and animated undo; deselection.
+- [x] Puzzle modes with classifier tests, continuation controls and smooth next puzzle.
+- [ ] Rust tests, iOS framework, simulator build, full UI tests and inspected screenshots.
+- [ ] Review, commit, push `feat/practice-polish` and open a PR against main.
+
+Implementation checks so far:
+- Rust: 32 tests pass without warnings. Framework regenerated; simulator `** BUILD SUCCEEDED **`.
+- Initial FFI fixture was rejected correctly because the non-moving king was already in check;
+  corrected the fixture. Initial run: `test result: FAILED. 31 passed; 1 failed`.
+- Three packs each have 11 unique WAVs, peaks below 0.25 and silent endpoints; copied to Mac previews.
+- CLI reviewed a downloaded Julius201 game at 150 ms/move and the beginner explanations were read.

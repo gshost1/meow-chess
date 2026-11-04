@@ -69,6 +69,24 @@ enum Engine {
         return env?.moves ?? []
     }
 
+    private struct ReplyEnvelope: Decodable {
+        let ok: Bool
+        let move: LineMove?
+        let error: String?
+    }
+
+    static func bestMove(fen: String) async throws -> LineMove? {
+        try await Task.detached(priority: .userInitiated) {
+            guard let raw = fen.withCString({ cc_best_move($0, 250) }) else {
+                throw EngineError.failed("Could not find a reply.")
+            }
+            defer { cc_free_string(raw) }
+            let envelope = try decoder.decode(ReplyEnvelope.self, from: Data(String(cString: raw).utf8))
+            guard envelope.ok else { throw EngineError.failed(envelope.error ?? "Could not find a reply.") }
+            return envelope.move
+        }.value
+    }
+
     static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
