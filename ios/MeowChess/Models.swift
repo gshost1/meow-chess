@@ -224,6 +224,27 @@ struct GameAnalysis: Codable, Hashable {
     let blackSummary: SideSummary
     let depthReached: Int
 
+    /// Stable selection: prioritize the largest losses; use ply to break ties.
+    /// Include at most one successful tactical move after the worst mistakes.
+    func keyQuestionPlies(userIsWhite: Bool) -> Set<Int> {
+        let mine = moves.filter { $0.isWhite == userIsWhite }
+        let tactical: Set<String> = ["fork", "pin", "capture", "checkmate", "king_attack"]
+        let good = mine.filter { !$0.grade.isBad && ($0.ideas ?? []).contains { tactical.contains($0.kind) } }
+            .sorted { lhs, rhs in
+                if lhs.playedIsBest != rhs.playedIsBest { return lhs.playedIsBest }
+                return lhs.ply < rhs.ply
+            }.first
+        let bad = mine.filter { $0.grade.isBad }.sorted { lhs, rhs in
+            let l = lhs.cpLoss ?? Int(lhs.winDrop * 1000)
+            let r = rhs.cpLoss ?? Int(rhs.winDrop * 1000)
+            return l == r ? lhs.ply < rhs.ply : l > r
+        }
+        // Three mistakes take priority; otherwise fill one remaining slot with a good tactic.
+        var chosen = Array(bad.prefix(3).map(\.ply))
+        if chosen.count < 3, let good { chosen.append(good.ply) }
+        return Set(chosen)
+    }
+
     func userIsWhite(_ username: String) -> Bool? {
         if white.caseInsensitiveCompare(username) == .orderedSame { return true }
         if black.caseInsensitiveCompare(username) == .orderedSame { return false }

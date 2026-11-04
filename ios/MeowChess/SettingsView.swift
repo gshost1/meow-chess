@@ -28,6 +28,19 @@ struct SettingsView: View {
                         .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
 
+                Section("Pieces") {
+                    PieceStylePicker()
+                    Text("Classic: Colin M. L. Burnett (cburnett) · BSD 3-Clause.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    NavigationLink("Classic piece license") {
+                        ScrollView {
+                            Text(classicLicense)
+                                .font(.footnote).padding()
+                        }
+                        .navigationTitle("Piece license")
+                    }
+                }
+
                 Section {
                     Picker("Analysis strength", selection: Binding(get: { store.strength }, set: { store.strength = $0 })) {
                         ForEach(AnalysisStrength.allCases) { Text($0.label).tag($0) }
@@ -106,7 +119,7 @@ struct SettingsView: View {
                     Button("Delete all reviews", role: .destructive) { confirmReset = true }
                 }
                 Section("About") {
-                    Text("Meow Chess: the chess engine is written from scratch in Rust and runs entirely on your phone. The cat pieces and meows are drawn and synthesized by the app itself. Games come from Chess.com's public API.")
+                    Text("Meow Chess: the chess engine is written from scratch in Rust and runs entirely on your phone. Cat pieces are drawn by the app; classic pieces are by Colin M. L. Burnett. The meows are synthesized for Meow Chess. Games come from Chess.com's public API.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
@@ -124,6 +137,12 @@ struct SettingsView: View {
                 Button("Delete", role: .destructive) { store.deleteAllAnalyses() }
             }
         }
+    }
+
+    private var classicLicense: String {
+        guard let url = Bundle.main.url(forResource: "CBURNETT-LICENSE", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return "License unavailable." }
+        return text
     }
 
     private func save() {

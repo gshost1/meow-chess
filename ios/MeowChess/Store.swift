@@ -26,7 +26,22 @@ final class Store: ObservableObject {
         didSet { objectWillChange.send() }
     }
     @AppStorage("strength") var strengthRaw: String = AnalysisStrength.normal.rawValue
-    @AppStorage("quizMode") var quizModeRaw: String = QuizMode.all.rawValue
+    @AppStorage("quizMode") var quizModeRaw: String = QuizMode.key.rawValue
+
+    @AppStorage("pieceStyle") var pieceStyleRaw: String = PieceStyle.cat.rawValue {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("gamesTimeClass") var gamesTimeClass: String = "" {
+        didSet { objectWillChange.send() }
+    }
+    var pieceStyle: PieceStyle {
+        get { PieceStyle(rawValue: pieceStyleRaw) ?? .cat }
+        set { pieceStyleRaw = newValue.rawValue }
+    }
+
+    @Published private(set) var pendingReviews: Set<String> = []
+    private var reviewingRecent = false
+    private var automaticallyAttempted: Set<String> = []
 
     @Published var games: [ChessComGame] = []
     @Published var analyses: [String: GameAnalysis] = [:]
@@ -38,7 +53,7 @@ final class Store: ObservableObject {
     @Published var solvedPuzzles: Set<String> = []
 
     var quizMode: QuizMode {
-        get { QuizMode(rawValue: quizModeRaw) ?? .all }
+        get { QuizMode(rawValue: quizModeRaw) ?? .key }
         set { quizModeRaw = newValue.rawValue; objectWillChange.send() }
     }
 
@@ -59,7 +74,15 @@ final class Store: ObservableObject {
 
     init() {
         if UITesting.resetRequested { Self.eraseEverything() }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         loadSaved()
+        #if DEBUG
+        if UITesting.enabled && ProcessInfo.processInfo.arguments.contains("-uiTestFixtures") {
+            games = UITesting.fixtureGames()
+            if let data = try? JSONEncoder().encode(games) { try? data.write(to: gamesCacheURL) }
+        }
+        #endif
+        startRecentAnalysis()
     }
 
     /// Wipes saved games, reviews, answers, settings and AI keys so UI tests start like a fresh install.
@@ -100,7 +123,7 @@ final class Store: ObservableObject {
 
     func refreshGames() async {
         let user = username.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !user.isEmpty else { return }
+        guard !user.isEmpty, !loadingGames else { return }
         loadingGames = true
         errorMessage = nil
         defer { loadingGames = false }
@@ -114,6 +137,7 @@ final class Store: ObservableObject {
                 if collected.count >= 40 { break }
             }
             games = collected.sorted { ($0.endTime ?? 0) > ($1.endTime ?? 0) }
+            startRecentAnalysis()
             if let data = try? JSONEncoder().encode(games) { try? data.write(to: gamesCacheURL) }
         } catch {
             errorMessage = "Couldn't load games for \(user). Check the username and your connection."
@@ -136,7 +160,7 @@ final class Store: ObservableObject {
     func isAnalyzing(_ game: ChessComGame) -> Bool { progress[game.id] != nil }
 
     func analyze(_ game: ChessComGame) async {
-        guard let pgn = game.pgn, progress[game.id] == nil else { return }
+        guard let pgn = game.pgn, analyses[game.id] == nil, progress[game.id] == nil else { return }
         progress[game.id] = 0
         defer { progress[game.id] = nil }
         let id = game.id
@@ -148,17 +172,38 @@ final class Store: ObservableObject {
                     if self.progress[id] != nil { self.progress[id] = p }
                 }
             }
-            try? data.write(to: folder.appendingPathComponent("\(id).json"))
+            try data.write(to: folder.appendingPathComponent("\(id).json"), options: .atomic)
             analyses[id] = analysis
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func analyzeRecent(_ count: Int) async {
-        for game in games.prefix(count) where analyses[game.id] == nil {
-            await analyze(game)
+    private func startRecentAnalysis() {
+        let missing = games.prefix(10).filter {
+            analyses[$0.id] == nil && !automaticallyAttempted.contains($0.id)
         }
+        guard !missing.isEmpty else { return }
+        automaticallyAttempted.formUnion(missing.map(\.id))
+        pendingReviews.formUnion(missing.map(\.id))
+        Task { await analyzeRecent(10) }
+    }
+
+    func analyzeRecent(_ count: Int) async {
+        pendingReviews.formUnion(games.prefix(count).filter { analyses[$0.id] == nil }.map(\.id))
+        guard !reviewingRecent else { return }
+        reviewingRecent = true
+        defer { reviewingRecent = false }
+        // Re-read games after each await so a refresh can add newly downloaded games.
+        while let game = games.first(where: { pendingReviews.contains($0.id) }) {
+            await analyze(game)
+            pendingReviews.remove(game.id)
+        }
+        pendingReviews = []
+    }
+
+    func reviewIsRequired(_ game: ChessComGame) -> Bool {
+        analyses[game.id] == nil && (games.prefix(10).contains { $0.id == game.id } || isAnalyzing(game))
     }
 
     // MARK: Idea quiz and puzzles
@@ -197,6 +242,27 @@ final class Store: ObservableObject {
 }
 
 enum UITesting {
+    #if DEBUG
+    static func fixtureGames() -> [ChessComGame] {
+        (0..<12).map { i in
+            let timeClass = i == 11 && ProcessInfo.processInfo.arguments.contains("-uiTestDaily")
+                ? "daily" : ["rapid", "bullet", "blitz"][i % 3]
+            let opponent = timeClass.capitalized + "Cat"
+            let pgn = """
+            [White "julius201"]
+            [Black "\(opponent)"]
+            [Result "1-0"]
+
+            1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 Bxf3 5. Qxf3 dxe5 6. Bc4 Nf6 7. Qb3 Qe7 8. Nc3 c6 9. Bg5 b5 10. Nxb5 cxb5 11. Bxb5+ Nbd7 12. O-O-O Rd8 13. Rxd7 Rxd7 14. Rd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+ Nxb8 17. Rd8# 1-0
+            """
+            return ChessComGame(url: "https://www.chess.com/game/live/fixture-\(i)", pgn: pgn,
+                timeControl: "600", endTime: 1_799_000_000 - i, rated: true, timeClass: timeClass,
+                rules: "chess", white: ChessComPlayer(username: "julius201", rating: 500, result: "win"),
+                black: ChessComPlayer(username: opponent, rating: 500, result: "checkmated"))
+        }
+    }
+    #endif
+
     static var enabled: Bool { ProcessInfo.processInfo.arguments.contains("-uiTesting") }
     static var resetRequested: Bool { ProcessInfo.processInfo.arguments.contains("-uiTestReset") }
 }
@@ -228,4 +294,11 @@ struct Puzzle: Identifiable, Hashable {
     let move: MoveReview
     let userIsWhite: Bool
     let opponent: String
+}
+
+
+enum PieceStyle: String, CaseIterable, Identifiable {
+    case cat, classic
+    var id: String { rawValue }
+    var label: String { self == .cat ? "Cat pieces" : "Classic pieces" }
 }

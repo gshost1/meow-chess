@@ -200,7 +200,7 @@ struct BoardView: View {
                 .id("slide-\(anim.key)-\(sq.index)")
                 .position(to)
         } else {
-            CatPiece(piece: p, mood: mood)
+            ChessPiece(piece: p, mood: mood)
                 .frame(width: cell, height: cell)
                 .position(position(sq, cell))
         }
@@ -269,7 +269,7 @@ struct SlidingPiece: View {
     @State private var t: CGFloat = 0
 
     var body: some View {
-        CatPiece(piece: piece, mood: mood)
+        ChessPiece(piece: piece, mood: mood)
             .frame(width: cell, height: cell)
             .modifier(HopEffect(t: t, dx: dx, dy: dy, lift: cell * 0.35))
             .zIndex(1)
@@ -287,7 +287,7 @@ struct PoofView: View {
 
     var body: some View {
         ZStack {
-            CatPiece(piece: piece, mood: .dizzy)
+            ChessPiece(piece: piece, mood: .dizzy)
                 .frame(width: cell, height: cell)
                 .scaleEffect(1 + 0.4 * p)
                 .opacity(Double(1 - p))

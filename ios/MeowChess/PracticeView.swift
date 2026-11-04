@@ -21,7 +21,7 @@ struct PracticeView: View {
             Group {
                 if puzzles.isEmpty {
                     VStack(spacing: 14) {
-                        CatPiece(piece: "N", mood: .happy).frame(width: 90, height: 90)
+                        ChessPiece(piece: "N", mood: .happy).frame(width: 90, height: 90)
                         Text("No puzzles yet").font(.title3.bold())
                         Text("Review some games and Meowy turns your mistakes into puzzles, so you can find the moves you missed.")
                             .multilineTextAlignment(.center).foregroundStyle(.secondary).padding(.horizontal, 32)

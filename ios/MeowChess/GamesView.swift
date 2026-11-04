@@ -4,6 +4,14 @@ struct GamesView: View {
     @EnvironmentObject var store: Store
     @State private var path: [ChessComGame] = []
 
+    private var timeClasses: [String] {
+        ["bullet", "blitz", "rapid"] + (store.games.contains { $0.timeClass == "daily" } ? ["daily"] : [])
+    }
+    private var selectedTimeClass: String {
+        if timeClasses.contains(store.gamesTimeClass) { return store.gamesTimeClass }
+        return store.games.first(where: { timeClasses.contains($0.timeClass ?? "") })?.timeClass ?? "rapid"
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             List {
@@ -14,11 +22,26 @@ struct GamesView: View {
                     ContentUnavailableView("No games yet", systemImage: "magnifyingglass",
                                            description: Text("Pull down to load your Chess.com games."))
                 }
-                ForEach(store.games) { game in
+                ForEach(store.games.filter { $0.timeClass == selectedTimeClass }) { game in
                     NavigationLink(value: game) {
                         GameRow(game: game)
                     }
+                    .disabled(store.reviewIsRequired(game))
+                    .opacity(store.reviewIsRequired(game) ? 0.45 : 1)
+                    .accessibilityIdentifier("game-\(game.id)")
                 }
+                if store.errorMessage != nil {
+                    Button("Retry unfinished reviews") { Task { await store.analyzeRecent(10) } }
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                Picker("Time control", selection: Binding(get: { selectedTimeClass }, set: { store.gamesTimeClass = $0 })) {
+                    ForEach(timeClasses, id: \.self) { Text($0.capitalized).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("games-time-control")
+                .padding(.horizontal).padding(.vertical, 6)
+                .background(.background)
             }
             .listStyle(.plain)
             .navigationTitle("Your games")
@@ -71,12 +94,16 @@ struct GameRow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
-            if let p = store.progress[game.id] {
-                ProgressView(value: p).frame(width: 50)
+            if store.reviewIsRequired(game) {
+                VStack(spacing: 3) {
+                    Text(store.isAnalyzing(game) ? "Reviewing…" : "Waiting…").font(.caption2)
+                    ProgressView(value: store.progress[game.id] ?? 0).frame(width: 60)
+                }
+                .accessibilityIdentifier("review-progress")
             } else if let a = store.analyses[game.id] {
                 let mine = game.userColorIsWhite(user) ? a.whiteSummary : a.blackSummary
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(String(format: "%.0f%%", mine.accuracy)).font(.headline.monospacedDigit())
+                    Text(String(format: "Acc %.0f", mine.accuracy)).font(.headline.monospacedDigit())
                     if mine.blunder > 0 {
                         Text("\(mine.blunder) blunder\(mine.blunder == 1 ? "" : "s")")
                             .font(.caption2).foregroundStyle(Grade.blunder.color)
@@ -116,7 +143,7 @@ struct GameDetailView: View {
                 ReviewView(analysis: analysis, userIsWhite: game.userColorIsWhite(store.username), gameId: game.id)
             } else {
                 VStack(spacing: 18) {
-                    CatPiece(piece: "N", mood: .normal).frame(width: 80, height: 80)
+                    ChessPiece(piece: "N", mood: .normal).frame(width: 80, height: 80)
                     Text("Meowy is reviewing your game…").font(.title3.bold())
                     ProgressView(value: store.progress[game.id] ?? 0)
                         .padding(.horizontal, 48)
@@ -126,6 +153,7 @@ struct GameDetailView: View {
                 .task { await store.analyze(game) }
             }
         }
+        .toolbar(.hidden, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle("vs \(game.opponent(of: store.username).username)")
     }

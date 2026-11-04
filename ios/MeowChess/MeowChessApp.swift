@@ -47,9 +47,9 @@ struct WelcomeView: View {
         VStack(spacing: 24) {
             Spacer()
             HStack(spacing: -10) {
-                CatPiece(piece: "N", mood: .happy).frame(width: 90, height: 90)
-                CatPiece(piece: "Q", mood: .happy).frame(width: 110, height: 110)
-                CatPiece(piece: "p", mood: .normal).frame(width: 80, height: 80)
+                ChessPiece(piece: "N", mood: .happy).frame(width: 90, height: 90)
+                ChessPiece(piece: "Q", mood: .happy).frame(width: 110, height: 110)
+                ChessPiece(piece: "p", mood: .normal).frame(width: 80, height: 80)
             }
             Text("Meow Chess").font(.largeTitle.bold())
             Text("Meowy, your cat coach, reviews your Chess.com games with a chess engine built in Rust and explains every move in plain English.")
@@ -61,6 +61,8 @@ struct WelcomeView: View {
                 .autocorrectionDisabled()
                 .padding()
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.15)))
+                .padding(.horizontal, 32)
+            PieceStylePicker()
                 .padding(.horizontal, 32)
             Button {
                 store.username = name.trimmingCharacters(in: .whitespaces)

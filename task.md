@@ -74,3 +74,24 @@ Status key: `[x]` done, `[~]` in progress, `[ ]` not started.
 
 - [ ] Optional Stockfish for deeper checks
 - [ ] Recalibrate the rating formula once more games at other ratings are reviewed
+
+## Testing feedback (November 3, 2026)
+
+- [x] Choose Cat or Classic at sign-up and in Settings; persist the choice and use it for
+  board, sliding/captured pieces, and piece illustrations. Bundle cburnett SVGs under its
+  BSD 3-Clause option, with a Settings credit and the full license.
+- [x] Filter games by Bullet / Blitz / Rapid, adding Daily only when needed; start at the
+  latest game's time control and remember an explicit selection.
+- [x] Show `Acc 87` in the list and `Accuracy 87.3` in reviews, without percent signs.
+- [x] Hide the review tab bar and reduce board side margins; restore tabs on return.
+- [x] Replace the old buzzy meows with original short, quiet, smoothly enveloped synthesis;
+  normal moves last 90 ms. Preserve SoundPlayer timing and file names.
+- [x] Automatically review the newest ten games after loading, skipping saved/running work.
+  Unfinished recent rows are disabled and show waiting/reviewing progress; older games
+  retain analysis on opening. Persist reviews atomically before making them available.
+- [x] Default questions to Key moments: deterministically select up to three worst losses,
+  then at most one successful tactic if a slot remains. Review toggle shares the setting.
+- [~] Verification: Rust 30/30 passed; initial simulator build succeeded; expanded UI tests
+  and question-selection regression tests running. Mock AI moved to port 18765 because
+  a pre-existing HTTP server occupies 8765.
+- [ ] Inspect and save required simulator screenshots; final review, commit, push branch.

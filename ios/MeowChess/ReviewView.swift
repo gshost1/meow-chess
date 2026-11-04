@@ -36,9 +36,19 @@ struct ReviewView: View {
                         if v.translation.width < -30 { step(1) } else if v.translation.width > 30 { step(-1) }
                     })
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 2)
             playerStrip(white: userIsWhite)
-            moveStrip
+            HStack {
+                moveStrip
+                Toggle("Questions", isOn: Binding(
+                    get: { store.quizMode != .off },
+                    set: { store.quizMode = $0 ? .key : .off }
+                ))
+                .font(.caption)
+                .fixedSize()
+                .accessibilityIdentifier("review-questions")
+                .padding(.trailing, 10)
+            }
             ScrollView {
                 infoCard.padding(.horizontal)
             }
@@ -46,6 +56,7 @@ struct ReviewView: View {
             controls
         }
         .padding(.top, 4)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
@@ -241,11 +252,11 @@ struct ReviewView: View {
         let elo = white ? analysis.whiteElo : analysis.blackElo
         let summary = white ? analysis.whiteSummary : analysis.blackSummary
         return HStack(spacing: 8) {
-            CatPiece(piece: white ? "K" : "k").frame(width: 24, height: 24)
+            ChessPiece(piece: white ? "K" : "k").frame(width: 24, height: 24)
             Text(name).font(.subheadline.bold())
             if let elo { Text("(\(elo))").font(.subheadline).foregroundStyle(.secondary) }
             Spacer()
-            Text(String(format: "Accuracy %.1f%%", summary.accuracy))
+            Text(String(format: "Accuracy %.1f", summary.accuracy))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
@@ -289,8 +300,7 @@ struct ReviewView: View {
         case .off: return false
         case .all: return true
         case .key:
-            let tactical: Set<String> = ["fork", "pin", "capture", "checkmate", "king_attack"]
-            return m.grade.isBad || (m.ideas ?? []).contains { tactical.contains($0.kind) }
+            return analysis.keyQuestionPlies(userIsWhite: userIsWhite).contains(m.ply)
         }
     }
 
@@ -334,7 +344,7 @@ struct ReviewView: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    CatPiece(piece: "Q", mood: .happy).frame(width: 36, height: 36)
+                    ChessPiece(piece: "Q", mood: .happy).frame(width: 36, height: 36)
                     Text("Meowy's game review").font(.headline)
                 }
                 Text("You made \(mySummary.blunder) blunder\(mySummary.blunder == 1 ? "" : "s"), \(mySummary.mistake) mistake\(mySummary.mistake == 1 ? "" : "s") and \(mySummary.inaccuracy) inaccurac\(mySummary.inaccuracy == 1 ? "y" : "ies").")
@@ -390,7 +400,7 @@ struct ReviewView: View {
         }
         Button { showChat = true } label: {
             HStack {
-                CatPiece(piece: "Q", mood: .happy).frame(width: 26, height: 26)
+                ChessPiece(piece: "Q", mood: .happy).frame(width: 26, height: 26)
                 Text("Ask Meowy about this move").font(.subheadline.bold())
                 Spacer()
                 Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -467,7 +477,7 @@ struct IdeaQuiz: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                CatPiece(piece: "Q", mood: .normal).frame(width: 30, height: 30)
+                ChessPiece(piece: "Q", mood: .normal).frame(width: 30, height: 30)
                 Text("Meowy asks: what was your idea with \(move.san)?").font(.subheadline.bold())
                     .accessibilityIdentifier("quiz-question")
             }
