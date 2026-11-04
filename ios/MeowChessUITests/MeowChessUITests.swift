@@ -48,8 +48,9 @@ final class MeowChessUITests: XCTestCase {
         waitForReview()
         XCTAssertFalse(app.tabBars.firstMatch.exists)
         let a = square("a1").frame, h = square("h1").frame
-        XCTAssertGreaterThan(max(a.maxX, h.maxX) - min(a.minX, h.minX), app.frame.width - 40,
-                             "review board should fill the width beside the evaluation bar")
+        // Questions are on here, so the board leaves room for the question card (it's full width with them off).
+        XCTAssertGreaterThan(max(a.maxX, h.maxX) - min(a.minX, h.minX), app.frame.width * 0.7,
+                             "review board should stay large beside the evaluation bar")
         let accuracies = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Accuracy '"))
         XCTAssertEqual(accuracies.count, 2)
         for label in accuracies.allElementsBoundByIndex { XCTAssertFalse(label.label.contains("%")) }
@@ -119,7 +120,8 @@ final class MeowChessUITests: XCTestCase {
 
         // Coach tab.
         app.tabBars.buttons["Meowy"].tap()
-        XCTAssertTrue(app.staticTexts["how you actually play"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["average accuracy"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'played like'")).firstMatch.exists)
 
         // Practice: make sure there is at least one puzzle, then solve it by tapping squares.
         app.tabBars.buttons["Practice"].tap()
@@ -259,10 +261,11 @@ final class MeowChessUITests: XCTestCase {
         openFirstGame()
         waitForReview()
         XCTAssertFalse(app.tabBars.firstMatch.exists)
-        let questions = app.switches["review-questions"]
-        XCTAssertEqual(questions.value as? String, "1")
-        flip(questions)
-        XCTAssertTrue(waitForValue(questions, "0"))
+        let questions = app.buttons["review-questions"]
+        XCTAssertTrue(questions.waitForExistence(timeout: 5))
+        XCTAssertEqual(questions.value as? String, "on")
+        questions.tap()
+        XCTAssertTrue(waitForValue(questions, "off"))
         leaveReview()
         app.tabBars.buttons["Settings"].tap()
         let picker = app.buttons["settings-quiz-mode"]
@@ -271,7 +274,10 @@ final class MeowChessUITests: XCTestCase {
         app.tabBars.buttons["Games"].tap()
         openFirstGame()
         waitForReview()
-        flip(questions)
+        let questionsAgain = app.buttons["review-questions"]
+        XCTAssertTrue(questionsAgain.waitForExistence(timeout: 5))
+        questionsAgain.tap()
+        XCTAssertTrue(waitForValue(questionsAgain, "on"))
         leaveReview()
         app.tabBars.buttons["Settings"].tap()
         scrollTo(picker)
@@ -288,7 +294,12 @@ final class MeowChessUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["vs DailyCat"].firstMatch.waitForExistence(timeout: 5))
         let older = app.buttons["game-fixture-11"]
         XCTAssertTrue(older.isEnabled, "older games can open before analysis")
-        older.tap()
+        // With "fast" strength the background queue finishes a game every second or so, and a list
+        // redraw at that moment can drop a tap. Real strengths redraw far less often.
+        for _ in 0..<3 where !app.staticTexts["Meowy is reviewing your game…"].exists && !app.buttons["Next move"].exists {
+            older.tap()
+            _ = app.staticTexts["Meowy is reviewing your game…"].waitForExistence(timeout: 3)
+        }
         waitForReview()
         XCTAssertFalse(app.tabBars.firstMatch.exists)
     }

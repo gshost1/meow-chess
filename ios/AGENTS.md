@@ -45,8 +45,8 @@ if it does, run `xcrun simctl shutdown <id>`, then boot it again.
   `PracticeView.swift`, `SettingsView.swift`: screens
 - `Assets.xcassets`: app icon and accent color
 
-The rating formula lives in both `rating_from_acpl` (`core/src/analysis.rs`) and
-`CoachView.rating`; change them together.
+The app no longer shows a "played like ~N" rating estimate; `rating_from_acpl` in
+`core/src/analysis.rs` is still computed but unused by the UI.
 
 ## Conventions
 

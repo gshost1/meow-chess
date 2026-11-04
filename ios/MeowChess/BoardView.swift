@@ -347,8 +347,11 @@ struct EvalBar: View {
                 Rectangle().fill(Color(white: 0.95)).frame(height: whiteHeight)
                 Text(eval.text)
                     .font(.system(size: 9, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                     .foregroundStyle(share >= 0.5 ? Color.black : Color.white)
                     .padding(.vertical, 3)
+                    .frame(width: 20, alignment: .center)
                     .frame(maxHeight: .infinity, alignment: (share >= 0.5) != flipped ? .bottom : .top)
             }
             .animation(.easeInOut(duration: 0.25), value: share)

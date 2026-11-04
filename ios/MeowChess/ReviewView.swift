@@ -1,5 +1,37 @@
 import SwiftUI
 
+/// How tall the board row is. It stays the same size for the whole review so it doesn't jump between
+/// moves. With questions on, it leaves room for the question card (all answers plus Not sure / Skip);
+/// with questions off it uses the full width. With the keyboard up it leaves room for the typed answer.
+enum ReviewLayout {
+    static func boardHeight(contentWidth: CGFloat, contentHeight: CGFloat, questionsOn: Bool, keyboard: Bool) -> CGFloat {
+        let square = max(0, contentWidth - 32)
+        let cap = min(square, max(0, contentHeight * 0.6))
+        if keyboard { return max(120, min(cap, contentHeight - 168 - 120)) }
+        if !questionsOn { return cap }
+        // Two name rows, the move strip, the transport controls, and the gaps between them.
+        let chrome: CGFloat = 168
+        // Measured question card on an iPhone 17 Pro: about 244pt.
+        let questionCard: CGFloat = 250
+        return max(140, min(cap, contentHeight - chrome - questionCard))
+    }
+}
+
+/// Positions (1 = after the first move) that "Next mistake" jumps to.
+enum ReviewNavigation {
+    /// Each move is `(is the player's move, grade)`.
+    static func nextMistakeIndices(_ moves: [(Bool, Grade)]) -> [Int] {
+        func indices(where include: (Grade) -> Bool) -> [Int] {
+            moves.enumerated().compactMap { i, move in
+                move.0 && include(move.1) ? i + 1 : nil
+            }
+        }
+        let serious = indices { $0 == .mistake || $0 == .blunder }
+        if !serious.isEmpty { return serious }
+        return indices { $0 == .inaccuracy }
+    }
+}
+
 struct ReviewView: View {
     @EnvironmentObject var store: Store
     let analysis: GameAnalysis
@@ -15,14 +47,14 @@ struct ReviewView: View {
     @State private var animKey = 0
     @State private var showSummary = false
     @State private var showChat = false
+    @State private var keyboardUp = false
 
     private var current: MoveReview? { index > 0 ? analysis.moves[index - 1] : nil }
 
     private var myMistakeIndices: [Int] {
-        analysis.moves.enumerated().compactMap { i, m in
-            m.isWhite == userIsWhite && m.grade.isBad ? i + 1 : nil
-        }
+        ReviewNavigation.nextMistakeIndices(analysis.moves.map { ($0.isWhite == userIsWhite, $0.grade) })
     }
+
 
     private var mySummary: SideSummary { userIsWhite ? analysis.whiteSummary : analysis.blackSummary }
 
@@ -38,20 +70,14 @@ struct ReviewView: View {
                         })
                 }
                 .padding(.horizontal, 2)
-                // Full width normally; shrinks when the keyboard is up so the typed answer stays visible.
-                .frame(height: max(0, min(geometry.size.width - 32, geometry.size.height * 0.6)))
+                .frame(height: ReviewLayout.boardHeight(
+                    contentWidth: geometry.size.width,
+                    contentHeight: geometry.size.height,
+                    questionsOn: store.quizMode != .off,
+                    keyboard: keyboardUp
+                ))
                 playerStrip(white: userIsWhite)
-                HStack {
-                    moveStrip
-                    Toggle("Questions", isOn: Binding(
-                        get: { store.quizMode != .off },
-                        set: { store.quizMode = $0 ? store.quizModeWhenOn : .off }
-                    ))
-                    .font(.caption)
-                    .fixedSize()
-                    .accessibilityIdentifier("review-questions")
-                    .padding(.trailing, 10)
-                }
+                moveStrip
                 ScrollView {
                     infoCard.padding(.horizontal)
                 }
@@ -63,6 +89,16 @@ struct ReviewView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    store.quizMode = store.quizMode == .off ? store.quizModeWhenOn : .off
+                } label: {
+                    Image(systemName: store.quizMode == .off ? "questionmark.bubble" : "questionmark.bubble.fill")
+                }
+                .accessibilityLabel("Questions")
+                .accessibilityIdentifier("review-questions")
+                .accessibilityValue(store.quizMode == .off ? "off" : "on")
+                .accessibilityAddTraits(store.quizMode == .off ? [] : .isSelected)
+                .accessibilityRemoveTraits(store.quizMode == .off ? .isSelected : [])
                 Button {
                     toggleBest()
                 } label: {
@@ -76,6 +112,13 @@ struct ReviewView: View {
                     .accessibilityIdentifier("toolbar-summary")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            // The Meowy chat sheet has its own text field; only the review's typed answer resizes the board.
+            if !showChat && !showSummary { keyboardUp = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardUp = false
+        }
         .sheet(isPresented: $showSummary) {
             SummarySheet(analysis: analysis, userIsWhite: userIsWhite) { target in
                 jump(to: target)
@@ -88,7 +131,7 @@ struct ReviewView: View {
                 MeowyChatView(
                     title: "\(m.numberLabel) \(m.san)",
                     facts: AIService.moveFacts(m, analysis: analysis, userIsWhite: userIsWhite),
-                    rating: mySummary.playedLikeRating,
+                    rating: store.games.first { $0.id == gameId }?.me(store.username).rating,
                     opening: "Explain move \(m.numberLabel) \(m.san) to me. What was it trying to do, what went right or wrong, and what should I learn from it?"
                 )
                 .presentationDetents([.medium, .large])
@@ -353,9 +396,6 @@ struct ReviewView: View {
                 }
                 Text("You made \(mySummary.blunder) blunder\(mySummary.blunder == 1 ? "" : "s"), \(mySummary.mistake) mistake\(mySummary.mistake == 1 ? "" : "s") and \(mySummary.inaccuracy) inaccurac\(mySummary.inaccuracy == 1 ? "y" : "ies").")
                     .font(.callout)
-                if let r = mySummary.playedLikeRating {
-                    Text("This game you played like a ~\(r) player.").font(.callout).foregroundStyle(.secondary)
-                }
                 Text("Swipe the board or tap → to step through. Tap 💡 any time to see the best move.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -566,6 +606,17 @@ struct QuizFeedback: View {
         .accessibilityIdentifier("quiz-feedback")
     }
 
+    /// "Blunder: ignores a threat" → "But it backfired: the move ignores a threat."
+    static func backfiredSentence(headline: String) -> String {
+        let parts = headline.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        let phrase = (parts.count == 2 ? String(parts[1]) : headline)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let reason = phrase.first?.isLowercase == true ? "the move \(phrase)" : phrase
+        let sentence = "But it backfired: \(reason)"
+        if let last = sentence.last, ".!?".contains(last) { return sentence }
+        return sentence + "."
+    }
+
     private var feedback: (String, String, Bool) {
         let ideas = move.ideasText ?? move.san
         guard let cat = IdeaCategory(rawValue: answer.choice) else {
@@ -577,10 +628,7 @@ struct QuizFeedback: View {
             if goodMove {
                 return ("😺 Spot on!", "You read your own move right, and it was a good idea. \(ideas)", true)
             }
-            // Headlines look like "Mistake: loses the rook"; keep only the part after the grade.
-            let what = move.headline.split(separator: ":", maxSplits: 1).last.map { $0.trimmingCharacters(in: .whitespaces) } ?? move.headline
-            let lowered = what.prefix(1).lowercased() + what.dropFirst()
-            var text = "You read your move right: it does try to \(cat.verb). But the idea backfired: \(lowered)\(lowered.hasSuffix(".") ? "" : ".")"
+            var text = "You read your move right: it does try to \(cat.verb). \(Self.backfiredSentence(headline: move.headline))"
             if !move.playedIsBest {
                 text += bestMatch.map { " \(move.bestSan) also \($0.text), and does it safely." } ?? " \(move.bestSan) was the better move here."
             }
@@ -624,9 +672,9 @@ struct SummarySheet: View {
             List {
                 Section {
                     HStack {
-                        accuracyBlock("Your", mine.accuracy, mine.playedLikeRating)
+                        accuracyBlock("Your", mine.accuracy)
                         Spacer()
-                        accuracyBlock("Opponent's", theirs.accuracy, theirs.playedLikeRating)
+                        accuracyBlock("Opponent's", theirs.accuracy)
                     }
                 }
                 if let plan = mine.plan {
@@ -669,11 +717,10 @@ struct SummarySheet: View {
         }
     }
 
-    private func accuracyBlock(_ title: String, _ value: Double, _ rating: Int?) -> some View {
+    private func accuracyBlock(_ title: String, _ value: Double) -> some View {
         VStack(spacing: 2) {
             Text(String(format: "%.1f", value)).font(.system(size: 34, weight: .bold, design: .rounded))
             Text("\(title) accuracy").font(.caption).foregroundStyle(.secondary)
-            if let rating { Text("played like ~\(rating)").font(.caption2).foregroundStyle(.secondary) }
         }
         .frame(maxWidth: .infinity)
     }

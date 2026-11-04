@@ -24,8 +24,17 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .onSubmit(save)
+                        .onChange(of: name) { _, new in
+                            let fixed = ChessComUsername.fixDashes(new)
+                            if fixed != new { name = fixed }
+                        }
+                    if let hint = ChessComUsername.hint(name) {
+                        Text(hint)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Button("Save and reload games", action: save)
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(ChessComUsername.normalize(name).isEmpty)
                 }
 
                 Section("Pieces") {
@@ -146,11 +155,10 @@ struct SettingsView: View {
     }
 
     private func save() {
-        let n = name.trimmingCharacters(in: .whitespaces)
+        let n = ChessComUsername.normalize(name)
         guard !n.isEmpty else { return }
-        store.username = n
-        store.games = []
-        Task { await store.refreshGames() }
+        name = n
+        store.replaceUsername(n)
     }
 
     private func test() async {
