@@ -95,6 +95,22 @@ struct BoardAnimation: Equatable {
     var key: Int
     var slides: [Slide] = []
     var poof: Poof? = nil
+
+    static func move(key: Int, uci: String, san: String, before: String, backwards: Bool = false) -> BoardAnimation? {
+        guard let (from, to) = uciSquares(uci) else { return nil }
+        var slides = [Slide(from: from, to: to)]
+        if san.hasPrefix("O-O") {
+            slides.append(Slide(from: Square(from.rank * 8 + (to.file == 6 ? 7 : 0)),
+                                to: Square(from.rank * 8 + (to.file == 6 ? 5 : 3))))
+        }
+        var poof: Poof?
+        if !backwards, san.contains("x") {
+            let board = parseBoard(before)
+            let square = board[to.index] != nil ? to : Square(from.rank * 8 + to.file)
+            poof = board[square.index].map { Poof(piece: $0, square: square) }
+        }
+        return BoardAnimation(key: key, slides: backwards ? slides.map { Slide(from: $0.to, to: $0.from) } : slides, poof: poof)
+    }
 }
 
 struct Poof: Hashable {
@@ -111,6 +127,7 @@ struct BoardView: View {
     var moods: [Square: PieceMood] = [:]
     var animation: BoardAnimation? = nil
     var selected: Square? = nil
+    var feedback: (Square, Bool)? = nil
     var targets: Set<Square> = []
     var onTap: ((Square) -> Void)? = nil
 
@@ -126,6 +143,7 @@ struct BoardView: View {
                 ForEach(0..<64, id: \.self) { i in
                     if let p = board[i] {
                         pieceView(p, Square(i), cell)
+                            .zIndex(animation?.slides.contains(where: { $0.to.index == i }) == true ? 2 : 0)
                     }
                 }
                 .allowsHitTesting(false)
@@ -168,14 +186,21 @@ struct BoardView: View {
                 Rectangle().fill(BoardTheme.highlight)
             }
             if selected == sq {
-                Rectangle().fill(Color.accentColor.opacity(0.45))
+                Rectangle().fill(Color(red: 0.98, green: 0.72, blue: 0.18).opacity(0.7))
+                Rectangle().strokeBorder(Color.white.opacity(0.85), lineWidth: 2).padding(2)
+            }
+            if let (square, correct) = feedback, square == sq {
+                Rectangle().fill((correct ? Color.green : Color.red).opacity(0.6))
+                Rectangle().strokeBorder(correct ? Color.green : Color.red, lineWidth: 3).padding(1)
             }
             coordinates(sq, cell)
             if targets.contains(sq) {
                 if occupied {
-                    Circle().stroke(Color.black.opacity(0.28), lineWidth: cell * 0.08).padding(cell * 0.06)
+                    Circle().stroke(Color.black.opacity(0.48), lineWidth: cell * 0.075).padding(cell * 0.055)
                 } else {
-                    Circle().fill(Color.black.opacity(0.22)).frame(width: cell * 0.3, height: cell * 0.3)
+                    Circle().fill(Color.black.opacity(0.32))
+                        .overlay(Circle().stroke(Color.white.opacity(0.45), lineWidth: 1))
+                        .frame(width: cell * 0.24, height: cell * 0.24)
                 }
             }
         }
@@ -236,12 +261,11 @@ struct BoardView: View {
     }
 }
 
-/// Moves a piece from an offset back to its square with a little hop.
-struct HopEffect: GeometryEffect {
+/// One short glide. No bounce or size change: the path remains easy to follow.
+struct GlideEffect: GeometryEffect {
     var t: CGFloat
     let dx: CGFloat
     let dy: CGFloat
-    let lift: CGFloat
 
     var animatableData: CGFloat {
         get { t }
@@ -250,17 +274,13 @@ struct HopEffect: GeometryEffect {
 
     func effectValue(size: CGSize) -> ProjectionTransform {
         let k = min(max(t, 0), 1)
-        let hop = sin(.pi * k)
-        let s = 1 + 0.18 * hop
-        var tr = CGAffineTransform(translationX: dx * (1 - k), y: dy * (1 - k) - lift * hop)
-        tr = tr.translatedBy(x: size.width / 2, y: size.height / 2)
-            .scaledBy(x: s, y: s)
-            .translatedBy(x: -size.width / 2, y: -size.height / 2)
+        let tr = CGAffineTransform(translationX: dx * (1 - k), y: dy * (1 - k))
         return ProjectionTransform(tr)
     }
 }
 
 struct SlidingPiece: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let piece: Character
     let mood: PieceMood
     let cell: CGFloat
@@ -271,16 +291,17 @@ struct SlidingPiece: View {
     var body: some View {
         ChessPiece(piece: piece, mood: mood)
             .frame(width: cell, height: cell)
-            .modifier(HopEffect(t: t, dx: dx, dy: dy, lift: cell * 0.35))
+            .modifier(GlideEffect(t: reduceMotion ? 1 : t, dx: dx, dy: dy))
             .zIndex(1)
             .onAppear {
-                withAnimation(.easeInOut(duration: 0.36)) { t = 1 }
+                withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.23)) { t = 1 }
             }
     }
 }
 
 /// A captured piece puffs away in a little cloud of sparkles.
 struct PoofView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let piece: Character
     let cell: CGFloat
     @State private var p: CGFloat = 0
@@ -289,19 +310,19 @@ struct PoofView: View {
         ZStack {
             ChessPiece(piece: piece, mood: .dizzy)
                 .frame(width: cell, height: cell)
-                .scaleEffect(1 + 0.4 * p)
+                .scaleEffect(reduceMotion ? 1 : 1 + 0.08 * p)
                 .opacity(Double(1 - p))
-            ForEach(0..<6, id: \.self) { i in
-                let angle = Double(i) / 6 * 2 * .pi
+            ForEach(0..<(reduceMotion ? 0 : 4), id: \.self) { i in
+                let angle = Double(i) / 4 * 2 * .pi
                 Text("✦")
                     .font(.system(size: cell * 0.22))
                     .foregroundStyle(i.isMultiple(of: 2) ? Color.yellow : Color.white)
                     .offset(x: cos(angle) * cell * 0.55 * p, y: sin(angle) * cell * 0.55 * p)
-                    .opacity(Double(p < 0.15 ? p / 0.15 : 1 - p))
+                    .opacity(Double(sin(.pi * p)))
             }
         }
         .onAppear {
-            withAnimation(.easeOut(duration: 0.5).delay(0.22)) { p = 1 }
+            withAnimation(.easeOut(duration: 0.12).delay(0.14)) { p = 1 }
         }
     }
 }

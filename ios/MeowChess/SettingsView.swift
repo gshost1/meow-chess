@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var confirmReset = false
 
     @AppStorage("soundOn") private var soundOn = true
+    @AppStorage("soundPack") private var soundPack = SoundPack.soft.rawValue
     @AppStorage("aiBaseURL") private var aiBaseURL = AIConfig.defaultBaseURL
     @AppStorage("aiModel") private var aiModel = ""
     @AppStorage("jevEnabled") private var jevEnabled = false
@@ -64,7 +65,31 @@ struct SettingsView: View {
                 Section {
                     Toggle("Meow sounds", isOn: $soundOn)
                         .accessibilityIdentifier("settings-sound")
-                    Button("Play a meow") { SoundPlayer.shared.play(.check) }.disabled(!soundOn)
+                    ForEach(SoundPack.allCases) { pack in
+                        HStack {
+                            Button {
+                                soundPack = pack.rawValue
+                            } label: {
+                                HStack {
+                                    Image(systemName: soundPack == pack.rawValue ? "checkmark.circle.fill" : "circle")
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(pack.label).font(.subheadline.bold())
+                                        Text(pack.detail).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("sound-pack-\(pack.rawValue)")
+                            .accessibilityValue(soundPack == pack.rawValue ? "selected" : "")
+                            Spacer()
+                            Button { SoundPlayer.shared.sample(pack) } label: {
+                                Image(systemName: "play.circle.fill").font(.title2)
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(!soundOn)
+                            .accessibilityLabel("Play sample: \(pack.label)")
+                        }
+                    }
                     Picker("Ask \"what was your idea?\"", selection: Binding(get: { store.quizMode }, set: { store.quizMode = $0 })) {
                         ForEach(QuizMode.allCases) { Text($0.label).tag($0) }
                     }

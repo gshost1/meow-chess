@@ -145,3 +145,57 @@ saved JSON so old reviews still load; the app just stops showing it.
 - [x] Checked on MeowQA-1: the quiz fits without scrolling, Rapid shows the empty-filter message,
   a missing player shows only the not-found message, and Meowy shows accuracy without a rating
   estimate. Shots are in `screenshots/qa-fixes/`.
+
+## Practice and board polish (November 4, 2026)
+
+- [x] Quick shared board glide, capture timing, castling and clearer highlights.
+- [x] Three original sound packs, persisted Settings picker and Mac previews.
+- [x] Wrong-move demonstration with engine reply and animated undo; deselection.
+- [x] Puzzle modes with classifier tests, continuation controls and smooth next puzzle.
+- [x] Rust tests, iOS framework, simulator build, full UI tests and inspected screenshots.
+- [x] Review, commit, push `feat/practice-polish` and open a PR against main.
+
+Implementation and validation notes:
+- Rust: 32 tests pass without warnings. Framework regenerated; simulator `** BUILD SUCCEEDED **`.
+- Initial FFI fixture was rejected correctly because the non-moving king was already in check;
+  corrected the fixture. Initial run: `test result: FAILED. 31 passed; 1 failed`.
+- Three packs each have 11 unique WAVs, peaks below 0.25 and silent endpoints; copied to Mac previews.
+- CLI reviewed a downloaded Julius201 game at 150 ms/move and the beginner explanations were read.
+
+- Implementation self-review covered the shared review/practice animation helper, capture and
+  castling undo, cancellation on puzzle/tab changes, filtered solved-puzzle retention and pack resources.
+- Input/security review covered null/invalid FENs, legal-position guards, bounded search, terminal
+  positions and freeing C strings. No auth, secret, dependency or saved-review JSON changes.
+- The first full UI run passed 12 unit tests and 4/5 UI journeys. Its new practice journey passed.
+  The AI-chat journey tapped Back during sheet dismissal; the helper now waits for dismissal and
+  a hittable Back button. That journey passed on the final rerun.
+
+Earlier failures (fixed):
+```text
+test result: FAILED. 31 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+/Users/Shost2/.t3/worktrees/meow-chess/t3-8fa11423/ios/MeowChessUITests/MeowChessUITests.swift:392: error: -[MeowChessUITests.MeowChessUITests test2_SettingsAndOptionalAI] : XCTAssertTrue failed
+** TEST FAILED **
+```
+
+Final verification:
+- `cargo test --release`: `test result: ok. 32 passed; 0 failed`; no warnings.
+- `./scripts/build-ios.sh`: `Built ios/ChessCore.xcframework`.
+- `cd ios && xcodegen generate`, followed by the documented iPhone 17 Pro simulator build:
+  `** BUILD SUCCEEDED **`. Xcode only emits its existing unused-AppIntents metadata warning.
+- `MEOW_BUILD="$PWD/ios/build/UITestBuild" scripts/run-ui-tests.sh`: `** TEST SUCCEEDED **`;
+  12 unit tests and all 5 UI journeys passed, zero failures or skipped tests.
+- Saved and inspected all six final screenshots in `screenshots/practice-polish/`:
+  mode picker, cat selection, wrong move and reply, solved line controls, sound picker, classic selection.
+- Remaining owner check: listen on a physical phone and choose a preferred pack. Soft mews is the
+  default. Deeper tactics may require more moves than an immediate reply; feedback stays neutral
+  when a capture/check/mate is not yet visible. No deployment or merge.
+
+Published: PR #4 — https://github.com/gshost1/meow-chess/pull/4 (base `main`, head `feat/practice-polish`).
+- [x] Code review fixes: Hint highlights the right piece after a wrong try; any checkmate solves the
+  puzzle; the shown puzzle stays in sync with the list; a mode starts at its first unsolved puzzle;
+  switching tabs no longer resets a solved puzzle (an interrupted demonstration is undone); the
+  opponent's capturing piece no longer gets the red marker; puzzles are classified once per render;
+  only the chosen sound pack is loaded; the old unprefixed WAVs are gone; line steps in Practice and
+  Review share one SAN-to-sound helper. `cargo test --release`: 32 passed. UI suite: all unit tests
+  and 4 of 5 UI tests passed; `test1_FreshInstallJourney` failed once on keyboard focus in the
+  username field ("Neither element nor any descendant has keyboard focus") and passed on rerun.

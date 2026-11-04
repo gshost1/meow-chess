@@ -211,38 +211,14 @@ struct ReviewView: View {
         return out
     }
 
-    private func rookSlide(_ from: Square, _ to: Square, san: String) -> Slide? {
-        guard san.hasPrefix("O-O") else { return nil }
-        let rank = from.rank
-        if to.file == 6 { return Slide(from: Square(rank * 8 + 7), to: Square(rank * 8 + 5)) }
-        if to.file == 2 { return Slide(from: Square(rank * 8 + 0), to: Square(rank * 8 + 3)) }
-        return nil
-    }
-
     private func forwardAnimation(uci: String, san: String, fenBefore: String) -> BoardAnimation? {
-        guard let (from, to) = uciSquares(uci) else { return nil }
         animKey += 1
-        var anim = BoardAnimation(key: animKey, slides: [Slide(from: from, to: to)])
-        if let rook = rookSlide(from, to, san: san) { anim.slides.append(rook) }
-        let before = parseBoard(fenBefore)
-        if san.contains("x") {
-            if let victim = before[to.index] {
-                anim.poof = Poof(piece: victim, square: to)
-            } else {
-                // En passant: the captured pawn sits beside the destination.
-                let sq = Square(from.rank * 8 + to.file)
-                if let victim = before[sq.index] { anim.poof = Poof(piece: victim, square: sq) }
-            }
-        }
-        return anim
+        return BoardAnimation.move(key: animKey, uci: uci, san: san, before: fenBefore)
     }
 
     private func backwardAnimation(_ m: MoveReview) -> BoardAnimation? {
-        guard let (from, to) = uciSquares(m.uci) else { return nil }
         animKey += 1
-        var anim = BoardAnimation(key: animKey, slides: [Slide(from: to, to: from)])
-        if let rook = rookSlide(from, to, san: m.san) { anim.slides.append(Slide(from: rook.to, to: rook.from)) }
-        return anim
+        return BoardAnimation.move(key: animKey, uci: m.uci, san: m.san, before: m.fenBefore, backwards: true)
     }
 
     // MARK: Navigation
@@ -256,7 +232,7 @@ struct ReviewView: View {
                 let lm = line[next - 1]
                 let fenBefore = next >= 2 ? line[next - 2].fen : m.fenBefore
                 animation = forwardAnimation(uci: lm.uci, san: lm.san, fenBefore: fenBefore)
-                SoundPlayer.shared.play(lm.san.hasSuffix("#") ? .checkmate : lm.san.hasSuffix("+") ? .check : lm.san.contains("x") ? .capture : .move)
+                SoundPlayer.shared.play(SoundPlayer.meow(forSAN: lm.san))
             } else {
                 animation = nil
             }

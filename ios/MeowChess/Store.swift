@@ -275,6 +275,11 @@ final class Store: ObservableObject {
 
     /// Puzzles built from the player's own mistakes and blunders, newest games first.
     var puzzles: [Puzzle] {
+        #if DEBUG
+        if UITesting.enabled && ProcessInfo.processInfo.arguments.contains("-uiTestPractice") {
+            return UITesting.practicePuzzles()
+        }
+        #endif
         var out: [Puzzle] = []
         for game in games {
             guard let a = analyses[game.id], let white = a.userIsWhite(username) else { continue }
@@ -308,6 +313,41 @@ struct ReviewProgressBar: View {
 
 enum UITesting {
     #if DEBUG
+    /// Small offline positions; every move and continuation is applied by the real engine.
+    static func practicePuzzles() -> [Puzzle] {
+        let positions = [
+            ("6k1/8/8/3q4/8/8/8/3R2K1 w - - 0 1", "d1d5", ["g8h8", "d5d8"],
+             [Idea(kind: "capture", text: "wins the black queen on d5 for free"),
+              Idea(kind: "save_piece", text: "moves the attacked rook to safety"),
+              Idea(kind: "defend", text: "stops the queen's threat")]),
+            ("7k/8/5KQ1/8/8/8/8/8 w - - 0 1", "g6g7", [],
+             [Idea(kind: "checkmate", text: "delivers checkmate")])
+        ]
+        return positions.enumerated().compactMap { index, entry in
+            let (fen, uci, rest, ideas) = entry
+            let moves = Engine.legalMoves(fen: fen)
+            guard let best = moves.first(where: { $0.uci == uci }),
+                  let wrong = moves.first(where: { $0.uci != uci }) else { return nil }
+            var line = [LineMove(san: best.san, uci: best.uci, fen: best.fen)]
+            for next in rest {
+                guard let move = Engine.legalMoves(fen: line.last?.fen ?? best.fen).first(where: { $0.uci == next }) else { break }
+                line.append(LineMove(san: move.san, uci: move.uci, fen: move.fen))
+            }
+            let json: [String: Any] = ["ply": 1, "move_number": 1, "color": "white",
+                "san": wrong.san, "uci": wrong.uci, "from": wrong.from, "to": wrong.to,
+                "fen_before": fen, "fen_after": wrong.fen, "eval_before": ["cp": 0], "eval_after": ["cp": -500],
+                "best_san": best.san, "best_uci": best.uci, "best_line": line.map(\.san), "reply_line": [],
+                "class": "blunder", "win_drop": 0.3, "accuracy": 20, "phase": "endgame",
+                "headline": "A better move", "explanation": "Look for checks and captures.", "tags": [],
+                "best_text": ideas.map(\.text).joined(separator: ". ") + ".",
+                "best_ideas": ideas.map { ["kind": $0.kind, "text": $0.text] },
+                "best_line_moves": line.map { ["san": $0.san, "uci": $0.uci, "fen": $0.fen] }]
+            guard let data = try? JSONSerialization.data(withJSONObject: json),
+                  let move = try? Engine.decoder.decode(MoveReview.self, from: data) else { return nil }
+            return Puzzle(id: "practice-fixture-\(index)", move: move, userIsWhite: true, opponent: "PracticeCat")
+        }
+    }
+
     static func fixtureGames() -> [ChessComGame] {
         (0..<12).map { i in
             let timeClass = i == 11 && ProcessInfo.processInfo.arguments.contains("-uiTestDaily")

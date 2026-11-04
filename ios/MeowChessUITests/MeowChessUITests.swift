@@ -304,6 +304,88 @@ final class MeowChessUITests: XCTestCase {
         XCTAssertFalse(app.tabBars.firstMatch.exists)
     }
 
+    func test5_PracticePolish() {
+        app.launchArguments = ["-uiTesting", "-uiTestReset", "-uiTestPractice", "-username", user, "-tab", "practice"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["puzzle-prompt"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["puzzle-mode-all"].exists)
+        XCTAssertTrue(app.buttons["puzzle-mode-attack"].exists)
+        capture("practice-mode-picker")
+        select(app.buttons["puzzle-mode-attack"])
+
+        square("d1").tap()
+        XCTAssertTrue(square("d1").isSelected)
+        capture("practice-selection")
+        square("d1").tap()
+        XCTAssertFalse(square("d1").isSelected, "tap selected piece to deselect")
+        square("d1").tap()
+        square("a2").tap()
+        XCTAssertFalse(square("d1").isSelected, "empty non-target deselects")
+        square("d1").tap()
+        square("g1").tap()
+        XCTAssertTrue(square("g1").isSelected, "another own piece switches selection")
+        square("g1").tap()
+
+        // A wrong rook move is visibly played; the engine's queen captures it.
+        square("d1").tap()
+        square("d2").tap()
+        XCTAssertTrue(square("d2").label.contains("white rook"))
+        let feedback = app.descendants(matching: .any)["puzzle-feedback"].firstMatch
+        let reply = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'taking your rook'"), object: feedback)
+        XCTAssertEqual(XCTWaiter().wait(for: [reply], timeout: 5), .completed)
+        XCTAssertTrue(square("d2").label.contains("black queen"))
+        capture("practice-wrong-move")
+        let reset = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'Try again'"), object: feedback)
+        XCTAssertEqual(XCTWaiter().wait(for: [reset], timeout: 6), .completed)
+        XCTAssertTrue(square("d1").label.contains("white rook"))
+        XCTAssertTrue(square("d5").label.contains("black queen"))
+        XCTAssertFalse(app.staticTexts["solved-count"].label.hasPrefix("Solved 1/"))
+
+        solvePuzzle()
+        app.buttons["puzzle-show-line"].tap()
+        capture("practice-solved-line")
+        XCTAssertEqual(app.staticTexts["puzzle-line-step"].label, "1/3")
+        app.buttons["Line forward"].tap()
+        XCTAssertEqual(app.staticTexts["puzzle-line-step"].label, "2/3")
+        app.buttons["Line back"].tap()
+        XCTAssertEqual(app.staticTexts["puzzle-line-step"].label, "1/3")
+        app.buttons["Line back"].tap()
+        XCTAssertTrue(square("d5").label.contains("black queen"), "undo restores captured pieces")
+        app.buttons["Play line"].tap()
+        let end = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '3/3'"), object: app.staticTexts["puzzle-line-step"])
+        XCTAssertEqual(XCTWaiter().wait(for: [end], timeout: 5), .completed)
+
+        app.buttons["Next puzzle"].tap()
+        XCTAssertEqual(app.staticTexts["puzzle-answer"].label, "g6g7")
+        app.buttons["Show answer"].tap()
+        XCTAssertTrue(feedbackText().contains("The answer was"))
+        XCTAssertTrue(square("g7").label.contains("white queen"))
+
+        app.tabBars.buttons["Settings"].tap()
+        let soft = app.buttons["sound-pack-soft"]
+        scrollTo(soft)
+        capture("practice-sound-picker")
+        for pack in ["chirps", "purrs", "soft"] {
+            let row = app.buttons["sound-pack-\(pack)"]
+            scrollTo(row)
+            row.tap()
+            XCTAssertEqual(row.value as? String, "selected")
+        }
+        app.buttons["Play sample: Soft mews"].tap()
+        app.terminate()
+        app.launchArguments = ["-uiTesting", "-uiTestPractice", "-username", user, "-tab", "settings"]
+        app.launch()
+        scrollTo(soft)
+        XCTAssertEqual(soft.value as? String, "selected", "pack persists across launch")
+        let styles = app.segmentedControls["piece-style"]
+        scrollTo(styles)
+        select(styles.buttons["Classic pieces"])
+        app.tabBars.buttons["Practice"].tap()
+        square("g6").tap()
+        XCTAssertTrue(square("g6").isSelected)
+        capture("practice-selection-classic")
+    }
+
     // MARK: Helpers
 
     private func capture(_ name: String) {
@@ -314,7 +396,10 @@ final class MeowChessUITests: XCTestCase {
     }
 
     private func leaveReview() {
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: back)
+        XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 5), .completed)
+        back.tap()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
     }
 
@@ -330,7 +415,10 @@ final class MeowChessUITests: XCTestCase {
 
     /// Half-height sheets close when you tap the dimmed area above them.
     private func dismissSheet() {
+        let sheet = app.navigationBars.matching(NSPredicate(format: "label == 'Summary' OR label BEGINSWITH 'Meowy'")).firstMatch
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+        // Wait for the dismissal transition before tapping the review's back button.
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 5))
     }
 
     /// Taps the switch knob itself; tapping the middle of a SwiftUI toggle row hits the label.

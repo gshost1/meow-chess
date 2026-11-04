@@ -15,6 +15,9 @@ char *cc_analyze_pgn(const char *pgn, const char *username, uint32_t ms_per_move
 /// Legal moves for a FEN position: {"ok":true,"moves":[{uci,san,from,to,fen}]}. Free with cc_free_string.
 char *cc_legal_moves(const char *fen);
 
+/// Best reply: {"ok":true,"move":{uci,san,fen}} (move is null at game end). Free with cc_free_string.
+char *cc_best_move(const char *fen, uint32_t ms);
+
 void cc_free_string(char *s);
 
 #ifdef __cplusplus
