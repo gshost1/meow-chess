@@ -191,3 +191,11 @@ Final verification:
   when a capture/check/mate is not yet visible. No deployment or merge.
 
 Published: PR #4 — https://github.com/gshost1/meow-chess/pull/4 (base `main`, head `feat/practice-polish`).
+- [x] Code review fixes: Hint highlights the right piece after a wrong try; any checkmate solves the
+  puzzle; the shown puzzle stays in sync with the list; a mode starts at its first unsolved puzzle;
+  switching tabs no longer resets a solved puzzle (an interrupted demonstration is undone); the
+  opponent's capturing piece no longer gets the red marker; puzzles are classified once per render;
+  only the chosen sound pack is loaded; the old unprefixed WAVs are gone; line steps in Practice and
+  Review share one SAN-to-sound helper. `cargo test --release`: 32 passed. UI suite: all unit tests
+  and 4 of 5 UI tests passed; `test1_FreshInstallJourney` failed once on keyboard focus in the
+  username field ("Neither element nor any descendant has keyboard focus") and passed on rerun.

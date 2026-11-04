@@ -232,7 +232,7 @@ struct ReviewView: View {
                 let lm = line[next - 1]
                 let fenBefore = next >= 2 ? line[next - 2].fen : m.fenBefore
                 animation = forwardAnimation(uci: lm.uci, san: lm.san, fenBefore: fenBefore)
-                SoundPlayer.shared.play(lm.san.hasSuffix("#") ? .checkmate : lm.san.hasSuffix("+") ? .check : lm.san.contains("x") ? .capture : .move)
+                SoundPlayer.shared.play(SoundPlayer.meow(forSAN: lm.san))
             } else {
                 animation = nil
             }

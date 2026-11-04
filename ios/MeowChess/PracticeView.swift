@@ -6,26 +6,30 @@ struct PracticeView: View {
     @State private var round = 0
     @State private var mode = PuzzleMode.all
 
-    private var available: [Puzzle] {
-        store.puzzles.filter { PuzzleMode.classify($0.move).contains(mode) }
+    /// Each puzzle with its modes, computed once per render.
+    private func classified() -> [(puzzle: Puzzle, modes: Set<PuzzleMode>)] {
+        store.puzzles.map { ($0, PuzzleMode.classify($0.move)) }
     }
-    private var list: [Puzzle] {
+    private func list(_ available: [Puzzle]) -> [Puzzle] {
         let unsolved = available.filter { !store.solvedPuzzles.contains($0.id) || $0.id == currentId }
         return unsolved.isEmpty ? available : unsolved
     }
 
     var body: some View {
+        let all = classified()
+        let available = all.filter { $0.modes.contains(mode) }.map(\.puzzle)
         NavigationStack {
             VStack(spacing: 8) {
-                if !store.puzzles.isEmpty {
+                if !all.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(PuzzleMode.allCases) { item in
-                                let count = store.puzzles.filter { PuzzleMode.classify($0.move).contains(item) }.count
+                                let inMode = all.filter { $0.modes.contains(item) }.map(\.puzzle)
+                                let count = inMode.count
                                 if count > 0 {
                                     Button {
                                         mode = item
-                                        currentId = store.puzzles.first(where: { PuzzleMode.classify($0.move).contains(item) })?.id
+                                        currentId = (inMode.first { !store.solvedPuzzles.contains($0.id) } ?? inMode.first)?.id
                                         round += 1
                                     } label: {
                                         Text("\(item.label) · \(count)")
@@ -41,7 +45,7 @@ struct PracticeView: View {
                     }
                     .accessibilityIdentifier("puzzle-modes")
                 }
-                let puzzles = list
+                let puzzles = list(available)
                 if puzzles.isEmpty {
                     Spacer()
                     ChessPiece(piece: "N", mood: .happy).frame(width: 90, height: 90)
@@ -59,13 +63,14 @@ struct PracticeView: View {
                         currentId = next.id
                         round += 1
                     }
-                    .onAppear { currentId = puzzles[i].id }
+                    // The board is not rebuilt per puzzle, so keep currentId pointing at what is shown.
+                    .onChange(of: puzzles[i].id, initial: true) { _, id in if currentId != id { currentId = id } }
                 }
             }
             .navigationTitle("Practice").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Text("Solved \(store.solvedPuzzles.intersection(store.puzzles.map(\.id)).count)/\(store.puzzles.count)")
+                    Text("Solved \(store.solvedPuzzles.intersection(all.map(\.puzzle.id)).count)/\(all.count)")
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         .accessibilityIdentifier("solved-count")
                 }
@@ -104,6 +109,9 @@ struct PuzzleBoard: View {
     @State private var previousFlipped = false
     @State private var previousOpacity = 0.0
     @State private var textOpacity = 1.0
+    @State private var loadedSession: String?
+    /// The move that solved it, when it was a different checkmate than the engine's.
+    @State private var solvedSan: String?
 
     private var m: MoveReview { puzzle.move }
     private var completed: Bool { status == .solved || status == .revealed }
@@ -164,7 +172,9 @@ struct PuzzleBoard: View {
                 }.padding(.bottom, 8)
             }
         }
-        .task(id: session) { await reset() }
+        .task(id: session) {
+            if loadedSession == session { resume() } else { await reset() }
+        }
         .onDisappear { work?.cancel(); playing = false }
     }
 
@@ -176,8 +186,8 @@ struct PuzzleBoard: View {
         return "\(kind == .all ? "Practice" : kind.label) · You're \(puzzle.userIsWhite ? "White" : "Black"). \(kind.prompt)"
     }
     private var highlights: [Square] {
-        if let lastMove { return [lastMove.0, lastMove.1] }
         if status == .hint, let best = uciSquares(m.bestUci) { return [best.0] }
+        if let lastMove { return [lastMove.0, lastMove.1] }
         return []
     }
     private var targets: Set<Square> {
@@ -188,7 +198,7 @@ struct PuzzleBoard: View {
     @ViewBuilder private var feedback: some View {
         if completed {
             VStack(alignment: .leading, spacing: 5) {
-                Text(status == .solved ? "😺 Purrfect! \(m.bestSan) is the move." : "The answer was \(m.bestSan).")
+                Text(status == .solved ? "😺 Purrfect! \(solvedSan ?? m.bestSan) is the move." : "The answer was \(m.bestSan).")
                     .font(.headline).foregroundStyle(status == .solved ? Grade.best.color : .primary)
             }
         } else if status == .wrong {
@@ -218,7 +228,24 @@ struct PuzzleBoard: View {
         }
     }
 
+    /// Back on screen after a tab switch: keep the puzzle, but undo a demonstration that was cut off.
+    private func resume() {
+        previousFen = nil
+        previousOpacity = 0
+        textOpacity = 1
+        guard busy else { return }
+        animation = nil
+        fen = m.fenBefore
+        selected = nil
+        status = .solving
+        busy = false
+        lastMove = nil
+        resultSquare = nil
+        reason = ""
+    }
+
     @MainActor private func reset() async {
+        loadedSession = session
         work?.cancel()
         playing = false
         if !fen.isEmpty {
@@ -238,6 +265,7 @@ struct PuzzleBoard: View {
         lineStep = 1
         lastMove = nil
         resultSquare = nil
+        solvedSan = nil
         reason = ""
         // Let the old board render over the new one before fading it out.
         do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
@@ -256,8 +284,9 @@ struct PuzzleBoard: View {
             selected = nil
             apply(LineMove(san: move.san, uci: move.uci, fen: move.fen))
             resultSquare = sq
-            if move.uci == m.bestUci {
+            if move.uci == m.bestUci || move.san.hasSuffix("#") {
                 status = .solved
+                solvedSan = move.san
                 store.markSolved(puzzle.id)
                 SoundPlayer.shared.play(.correct)
             } else {
@@ -300,10 +329,13 @@ struct PuzzleBoard: View {
                 try await Task.sleep(for: .milliseconds(650))
                 if let reply {
                     reason = replyReason(reply, before: attempt.fen)
+                    let attemptSquare = resultSquare
+                    if uciSquares(reply.uci)?.1 == attemptSquare { resultSquare = nil }
                     apply(reply)
-                    SoundPlayer.shared.play(reply.san.hasSuffix("#") ? .checkmate : reply.san.hasSuffix("+") ? .check : reply.san.contains("x") ? .capture : .move)
+                    SoundPlayer.shared.play(SoundPlayer.meow(forSAN: reply.san))
                     try await Task.sleep(for: .milliseconds(1800))
                     apply(reply, backwardsTo: attempt.fen)
+                    resultSquare = attemptSquare
                     try await Task.sleep(for: .milliseconds(350))
                 } else {
                     reason = "This ends the line. Try \(m.bestSan) instead."
@@ -318,6 +350,7 @@ struct PuzzleBoard: View {
             apply(LineMove(san: attempt.san, uci: attempt.uci, fen: attempt.fen), backwardsTo: start)
             resultSquare = nil
             do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            lastMove = nil
             busy = false
             reason = "Try again. Look for checks, captures and threats."
         }
@@ -339,7 +372,7 @@ struct PuzzleBoard: View {
         guard next != lineStep else { return }
         if next > lineStep {
             apply(line[lineStep])
-            SoundPlayer.shared.play(.move)
+            SoundPlayer.shared.play(SoundPlayer.meow(forSAN: line[lineStep].san))
         } else {
             apply(line[next], backwardsTo: next == 0 ? m.fenBefore : line[next - 1].fen)
         }

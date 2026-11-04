@@ -37,25 +37,32 @@ final class SoundPlayer {
     private init() {
         // .ambient respects the silent switch and mixes with other audio.
         try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
-        for pack in SoundPack.allCases {
-          for m in Meow.allCases {
+        load(currentPack)
+    }
+
+    private var currentPack: SoundPack {
+        SoundPack(rawValue: UserDefaults.standard.string(forKey: "soundPack") ?? "") ?? .soft
+    }
+
+    /// Loads one pack's players the first time it is used, so unused packs cost nothing.
+    private func load(_ pack: SoundPack) {
+        for m in Meow.allCases {
             let name = "\(pack.rawValue)_\(m.rawValue)"
-            if let url = Bundle.main.url(forResource: name, withExtension: "wav"),
-               let p = try? AVAudioPlayer(contentsOf: url) {
-                p.prepareToPlay()
-                players[name] = p
-            }
-          }
+            guard players[name] == nil,
+                  let url = Bundle.main.url(forResource: name, withExtension: "wav"),
+                  let p = try? AVAudioPlayer(contentsOf: url) else { continue }
+            p.prepareToPlay()
+            players[name] = p
         }
     }
 
     func play(_ m: Meow) {
         sampleTask?.cancel()
-        let pack = SoundPack(rawValue: UserDefaults.standard.string(forKey: "soundPack") ?? "") ?? .soft
-        play(m, pack: pack)
+        play(m, pack: currentPack)
     }
 
     private func play(_ m: Meow, pack: SoundPack) {
+        load(pack)
         guard enabled, let p = players["\(pack.rawValue)_\(m.rawValue)"] else { return }
         p.currentTime = 0
         p.play()
@@ -77,6 +84,15 @@ final class SoundPlayer {
     /// Picks the most important sound for a reviewed move.
     func play(for move: MoveReview) {
         play(Self.meow(for: move))
+    }
+
+    /// The sound for a plain move in a line, from its SAN.
+    static func meow(forSAN san: String) -> Meow {
+        if san.hasSuffix("#") { return .checkmate }
+        if san.hasSuffix("+") { return .check }
+        if san.contains("x") { return .capture }
+        if san.hasPrefix("O-O") { return .castle }
+        return .move
     }
 
     static func meow(for m: MoveReview) -> Meow {
