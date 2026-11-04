@@ -25,13 +25,11 @@ struct SettingsView: View {
                         .autocorrectionDisabled()
                         .onSubmit(save)
                         .onChange(of: name) { _, new in
-                            let fixed = new
-                                .replacingOccurrences(of: "\u{2014}", with: "--")
-                                .replacingOccurrences(of: "\u{2013}", with: "-")
+                            let fixed = ChessComUsername.fixDashes(new)
                             if fixed != new { name = fixed }
                         }
-                    if ChessComUsername.needsHint(name) {
-                        Text("Enter your Chess.com username")
+                    if let hint = ChessComUsername.hint(name) {
+                        Text(hint)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

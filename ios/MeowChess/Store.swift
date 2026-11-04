@@ -161,26 +161,17 @@ final class Store: ObservableObject {
         do {
             let archives: ChessComArchives = try await fetch("https://api.chess.com/pub/player/\(user)/games/archives")
             var collected: [ChessComGame] = []
-            var succeeded = 0
-            var failed = 0
             // Most recent months first, until we have a decent number of games.
-            // Chess.com lists the current month even when it has no games yet, and that URL 404s.
+            // Chess.com lists the current month even when it has no games yet, and that URL 404s: skip it.
+            // Any other failure stops the load so a partial list never replaces the cached games.
             for url in archives.archives.reversed() {
-                do {
-                    let month: ChessComMonth = try await fetch(url)
-                    succeeded += 1
-                    collected += month.games.filter { ($0.rules ?? "chess") == "chess" && $0.pgn != nil }
-                    if collected.count >= 40 { break }
-                } catch {
-                    failed += 1
-                }
+                let month: ChessComMonth
+                do { month = try await fetch(url) } catch ChessComLoadError.notFound { continue }
+                collected += month.games.filter { ($0.rules ?? "chess") == "chess" && $0.pgn != nil }
+                if collected.count >= 40 { break }
             }
             // The username changed while this was loading: keep the newer user's games.
             guard loadingUser == user else { return }
-            if succeeded == 0 && failed > 0 {
-                errorMessage = Self.gamesLoadError(for: user)
-                return
-            }
             games = collected.sorted { ($0.endTime ?? 0) > ($1.endTime ?? 0) }
             startRecentAnalysis()
             if let data = try? JSONEncoder().encode(games) { try? data.write(to: gamesCacheURL) }

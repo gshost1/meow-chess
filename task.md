@@ -118,9 +118,13 @@ Status key: `[x]` done, `[~]` in progress, `[ ]` not started.
 First pass over the tester shots. Swift only. The ACPL rating curve stays in the engine and in
 saved JSON so old reviews still load; the app just stops showing it.
 
-- [x] Review board stays full width at the start and while the keyboard is up. A question or
-  explanation shrinks it only enough to keep the card on screen (300pt for a question, 256pt for
-  an explanation, 168pt of chrome).
+- [x] Review board keeps one size for the whole review so it doesn't jump between moves: full width
+  with questions off, and with questions on it leaves 250pt for the question card (168pt of chrome).
+  With the keyboard up it leaves 120pt for the typed answer. Explanations scroll inside the card.
+- [x] Loading games skips only months Chess.com answers with 404 (an empty current month). Any other
+  failure stops the load and keeps the cached games.
+- [x] Usernames: dashes fixed and ends trimmed; any other character Chess.com doesn't allow is refused
+  with a hint instead of silently removed. Meowy chat gets the player's real Chess.com rating.
 - [x] Questions control is a toolbar button (`review-questions`). The move strip has the full width.
 - [x] Next mistake jumps to mistakes and blunders, and to inaccuracies only when the game has
   nothing worse. Red arrows still mark inaccuracies.

@@ -73,8 +73,8 @@ struct WelcomeView: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.15)))
                 .padding(.horizontal, 32)
                 .onChange(of: name) { _, new in fixDashes(new) }
-            if ChessComUsername.needsHint(name) {
-                Text("Enter your Chess.com username")
+            if let hint = ChessComUsername.hint(name) {
+                Text(hint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -100,9 +100,7 @@ struct WelcomeView: View {
 
     /// iOS replaces a typed `--` with an em dash. Put the dashes back while the field is open.
     private func fixDashes(_ new: String) {
-        let fixed = new
-            .replacingOccurrences(of: "\u{2014}", with: "--")
-            .replacingOccurrences(of: "\u{2013}", with: "-")
+        let fixed = ChessComUsername.fixDashes(new)
         if fixed != new { name = fixed }
     }
 }

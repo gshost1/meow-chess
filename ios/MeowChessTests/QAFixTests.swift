@@ -7,17 +7,18 @@ final class QAFixTests: XCTestCase {
         XCTAssertEqual(ChessComUsername.normalize("this\u{2014}does-not-"), "this--does-not-")
         XCTAssertEqual(ChessComUsername.normalize("this\u{2013}does"), "this-does")
         XCTAssertEqual(ChessComUsername.normalize("a\u{2014}b\u{2013}c"), "a--b-c")
-        XCTAssertEqual(ChessComUsername.normalize("julius 201"), "julius201")
         XCTAssertEqual(ChessComUsername.normalize("hello_world"), "hello_world")
-        XCTAssertEqual(ChessComUsername.normalize("Julius201!!"), "Julius201")
-        XCTAssertEqual(ChessComUsername.normalize("😺julius"), "julius")
+        // Anything else inside the name is refused rather than silently removed (it could be someone else).
+        XCTAssertEqual(ChessComUsername.normalize("julius 201"), "")
+        XCTAssertEqual(ChessComUsername.normalize("Julius201!!"), "")
+        XCTAssertEqual(ChessComUsername.normalize("😺julius"), "")
         XCTAssertEqual(ChessComUsername.normalize("   "), "")
         XCTAssertEqual(ChessComUsername.normalize(""), "")
-        XCTAssertTrue(ChessComUsername.needsHint("   "))
-        XCTAssertTrue(ChessComUsername.needsHint("!!!"))
-        XCTAssertFalse(ChessComUsername.needsHint(""))
-        XCTAssertFalse(ChessComUsername.needsHint("julius201"))
-        XCTAssertFalse(ChessComUsername.needsHint("  julius201  "))
+        XCTAssertEqual(ChessComUsername.hint("   "), "Enter your Chess.com username")
+        XCTAssertEqual(ChessComUsername.hint("julius 201"), "Chess.com usernames only use letters, numbers, _ and -")
+        XCTAssertNil(ChessComUsername.hint(""))
+        XCTAssertNil(ChessComUsername.hint("julius201"))
+        XCTAssertNil(ChessComUsername.hint("  julius201  "))
     }
 
     func testNextMistakeSkipsInaccuraciesUntilNothingWorseRemains() {
@@ -76,19 +77,16 @@ final class QAFixTests: XCTestCase {
         )
     }
 
-    func testBoardShrinksForAQuestionAndStaysLargeOtherwise() {
+    func testBoardLeavesRoomForQuestionsAndIsFullWidthWithout() {
         let width: CGFloat = 402
         let height: CGFloat = 730
-        let open = ReviewLayout.boardHeight(contentWidth: width, contentHeight: height, detail: .none, keyboard: false)
-        let explaining = ReviewLayout.boardHeight(contentWidth: width, contentHeight: height, detail: .explanation, keyboard: false)
-        let asking = ReviewLayout.boardHeight(contentWidth: width, contentHeight: height, detail: .question, keyboard: false)
-        XCTAssertEqual(open, 370, "the starting board stays at the full-width cap")
-        XCTAssertGreaterThan(open, explaining)
-        XCTAssertGreaterThan(explaining, asking)
-        XCTAssertGreaterThanOrEqual(height - 168 - asking, 300, "a question keeps room for every answer")
-        XCTAssertGreaterThanOrEqual(height - 168 - explaining, 256, "a typical explanation keeps its room")
+        let off = ReviewLayout.boardHeight(contentWidth: width, contentHeight: height, questionsOn: false, keyboard: false)
+        let on = ReviewLayout.boardHeight(contentWidth: width, contentHeight: height, questionsOn: true, keyboard: false)
+        XCTAssertEqual(off, 370, "with questions off the board is full width")
+        XCTAssertEqual(on, 312, "with questions on the board leaves room for the question card")
+        XCTAssertGreaterThanOrEqual(height - 168 - on, 250)
 
-        let typing = ReviewLayout.boardHeight(contentWidth: width, contentHeight: 420, detail: .question, keyboard: true)
-        XCTAssertEqual(typing, 252, "the keyboard still caps the board at 60% of the height")
+        let typing = ReviewLayout.boardHeight(contentWidth: width, contentHeight: 420, questionsOn: true, keyboard: true)
+        XCTAssertEqual(typing, 132, "with the keyboard up the board leaves room for the typed answer")
     }
 }

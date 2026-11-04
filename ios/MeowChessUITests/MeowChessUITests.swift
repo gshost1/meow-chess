@@ -48,8 +48,9 @@ final class MeowChessUITests: XCTestCase {
         waitForReview()
         XCTAssertFalse(app.tabBars.firstMatch.exists)
         let a = square("a1").frame, h = square("h1").frame
-        XCTAssertGreaterThan(max(a.maxX, h.maxX) - min(a.minX, h.minX), app.frame.width - 40,
-                             "review board should fill the width beside the evaluation bar")
+        // Questions are on here, so the board leaves room for the question card (it's full width with them off).
+        XCTAssertGreaterThan(max(a.maxX, h.maxX) - min(a.minX, h.minX), app.frame.width * 0.7,
+                             "review board should stay large beside the evaluation bar")
         let accuracies = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Accuracy '"))
         XCTAssertEqual(accuracies.count, 2)
         for label in accuracies.allElementsBoundByIndex { XCTAssertFalse(label.label.contains("%")) }

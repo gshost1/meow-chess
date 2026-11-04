@@ -1,18 +1,19 @@
 import SwiftUI
 
-/// How tall the board row is. The info card keeps enough room for a quiz or a typical explanation,
-/// and the board takes whatever is left, up to the old full-width cap. The keyboard still uses that cap.
+/// How tall the board row is. It stays the same size for the whole review so it doesn't jump between
+/// moves. With questions on, it leaves room for the question card (all answers plus Not sure / Skip);
+/// with questions off it uses the full width. With the keyboard up it leaves room for the typed answer.
 enum ReviewLayout {
-    enum Detail { case none, explanation, question }
-
-    static func boardHeight(contentWidth: CGFloat, contentHeight: CGFloat, detail: Detail, keyboard: Bool) -> CGFloat {
+    static func boardHeight(contentWidth: CGFloat, contentHeight: CGFloat, questionsOn: Bool, keyboard: Bool) -> CGFloat {
         let square = max(0, contentWidth - 32)
         let cap = min(square, max(0, contentHeight * 0.6))
-        if keyboard || detail == .none { return cap }
+        if keyboard { return max(120, min(cap, contentHeight - 168 - 120)) }
+        if !questionsOn { return cap }
         // Two name rows, the move strip, the transport controls, and the gaps between them.
         let chrome: CGFloat = 168
-        let info: CGFloat = detail == .question ? 300 : 256
-        return max(140, min(cap, contentHeight - chrome - info))
+        // Measured question card on an iPhone 17 Pro: about 244pt.
+        let questionCard: CGFloat = 250
+        return max(140, min(cap, contentHeight - chrome - questionCard))
     }
 }
 
@@ -54,11 +55,6 @@ struct ReviewView: View {
         ReviewNavigation.nextMistakeIndices(analysis.moves.map { ($0.isWhite == userIsWhite, $0.grade) })
     }
 
-    private var layoutDetail: ReviewLayout.Detail {
-        guard let m = current else { return .none }
-        if quizApplies(m), store.answers[Store.answerKey(game: gameId, ply: m.ply)] == nil { return .question }
-        return .explanation
-    }
 
     private var mySummary: SideSummary { userIsWhite ? analysis.whiteSummary : analysis.blackSummary }
 
@@ -74,12 +70,10 @@ struct ReviewView: View {
                         })
                 }
                 .padding(.horizontal, 2)
-                // Full width when the card is short. Shrinks so a question or a typical explanation fits.
-                // With the keyboard up, stay on the 60% cap so the typed answer stays visible.
                 .frame(height: ReviewLayout.boardHeight(
                     contentWidth: geometry.size.width,
                     contentHeight: geometry.size.height,
-                    detail: layoutDetail,
+                    questionsOn: store.quizMode != .off,
                     keyboard: keyboardUp
                 ))
                 playerStrip(white: userIsWhite)
@@ -119,7 +113,8 @@ struct ReviewView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            keyboardUp = true
+            // The Meowy chat sheet has its own text field; only the review's typed answer resizes the board.
+            if !showChat && !showSummary { keyboardUp = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboardUp = false
@@ -136,7 +131,7 @@ struct ReviewView: View {
                 MeowyChatView(
                     title: "\(m.numberLabel) \(m.san)",
                     facts: AIService.moveFacts(m, analysis: analysis, userIsWhite: userIsWhite),
-                    rating: nil,
+                    rating: store.games.first { $0.id == gameId }?.me(store.username).rating,
                     opening: "Explain move \(m.numberLabel) \(m.san) to me. What was it trying to do, what went right or wrong, and what should I learn from it?"
                 )
                 .presentationDetents([.medium, .large])

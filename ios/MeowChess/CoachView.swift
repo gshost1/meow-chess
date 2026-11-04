@@ -105,12 +105,6 @@ struct CoachView: View {
         var chessComRating: Int?
     }
 
-    static func rating(acpl: Double) -> Int {
-        // Must match rating_from_acpl in core/src/analysis.rs.
-        let r = 4000 * exp(-0.035 * acpl)
-        return Int(min(2800, max(100, (r / 25).rounded() * 25)))
-    }
-
     private var stats: Stats {
         var s = Stats()
         let user = store.username

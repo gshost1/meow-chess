@@ -207,7 +207,6 @@ struct SideSummary: Codable, Hashable {
     let ideaCounts: [String: Int]?
 
     /// Recomputed from `acpl` so reviews saved under an older formula stay consistent.
-    var playedLikeRating: Int? { acpl.map(CoachView.rating) ?? estimatedRating }
 }
 
 struct GameAnalysis: Codable, Hashable {
@@ -311,21 +310,28 @@ struct ChessComMonth: Codable { let games: [ChessComGame] }
 
 /// Chess.com usernames are letters, digits, `_` and `-`. iOS turns a typed `--` into an em dash.
 enum ChessComUsername {
-    static func normalize(_ raw: String) -> String {
-        let dashed = raw
-            .replacingOccurrences(of: "\u{2014}", with: "--")
-            .replacingOccurrences(of: "\u{2013}", with: "-")
-        return String(dashed.unicodeScalars.filter { scalar in
-            let v = scalar.value
-            let digit = (48...57).contains(v)
-            let upper = (65...90).contains(v)
-            let lower = (97...122).contains(v)
-            return digit || upper || lower || scalar == "_" || scalar == "-"
-        })
+    /// Puts back the hyphens iOS's smart punctuation turned into dashes.
+    static func fixDashes(_ raw: String) -> String {
+        raw.replacingOccurrences(of: "\u{2014}", with: "--").replacingOccurrences(of: "\u{2013}", with: "-")
     }
 
-    /// True when the field isn't empty but nothing usable remains (for example a name made only of spaces).
-    static func needsHint(_ raw: String) -> Bool {
-        !raw.isEmpty && normalize(raw).isEmpty
+    private static func isAllowed(_ scalar: Unicode.Scalar) -> Bool {
+        let v = scalar.value
+        return (48...57).contains(v) || (65...90).contains(v) || (97...122).contains(v) || scalar == "_" || scalar == "-"
+    }
+
+    /// The name to save and fetch: dashes fixed and the ends trimmed. Returns "" if anything else in
+    /// the name can't be part of a Chess.com username, so a typo never silently becomes another account.
+    static func normalize(_ raw: String) -> String {
+        let name = fixDashes(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.unicodeScalars.allSatisfy(isAllowed) ? name : ""
+    }
+
+    /// What to tell the user under the field, or nil when the name is fine (or the field is empty).
+    static func hint(_ raw: String) -> String? {
+        guard !raw.isEmpty, normalize(raw).isEmpty else { return nil }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Enter your Chess.com username"
+            : "Chess.com usernames only use letters, numbers, _ and -"
     }
 }
