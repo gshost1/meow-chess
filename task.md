@@ -153,7 +153,7 @@ saved JSON so old reviews still load; the app just stops showing it.
 - [x] Wrong-move demonstration with engine reply and animated undo; deselection.
 - [x] Puzzle modes with classifier tests, continuation controls and smooth next puzzle.
 - [x] Rust tests, iOS framework, simulator build, full UI tests and inspected screenshots.
-- [ ] Review, commit, push `feat/practice-polish` and open a PR against main.
+- [x] Review, commit, push `feat/practice-polish` and open a PR against main.
 
 Implementation and validation notes:
 - Rust: 32 tests pass without warnings. Framework regenerated; simulator `** BUILD SUCCEEDED **`.
@@ -189,3 +189,5 @@ Final verification:
 - Remaining owner check: listen on a physical phone and choose a preferred pack. Soft mews is the
   default. Deeper tactics may require more moves than an immediate reply; feedback stays neutral
   when a capture/check/mate is not yet visible. No deployment or merge.
+
+Published: PR #4 — https://github.com/gshost1/meow-chess/pull/4 (base `main`, head `feat/practice-polish`).
