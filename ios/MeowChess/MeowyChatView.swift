@@ -38,7 +38,7 @@ struct MeowyChatView: View {
                         }
                         if thinking {
                             HStack {
-                                CatPiece(piece: "Q", mood: .normal).frame(width: 28, height: 28)
+                                ChessPiece(piece: "Q", mood: .normal).frame(width: 28, height: 28)
                                 ProgressView()
                                 Text("Meowy is thinking…").font(.caption).foregroundStyle(.secondary)
                             }
@@ -76,7 +76,7 @@ struct MeowyChatView: View {
     private func bubble(_ m: ChatMessage) -> some View {
         HStack(alignment: .top, spacing: 8) {
             if m.role == "assistant" {
-                CatPiece(piece: "Q", mood: .happy).frame(width: 30, height: 30)
+                ChessPiece(piece: "Q", mood: .happy).frame(width: 30, height: 30)
             } else {
                 Spacer(minLength: 40)
             }
@@ -92,7 +92,7 @@ struct MeowyChatView: View {
 
     private var setupCard: some View {
         VStack(spacing: 16) {
-            CatPiece(piece: "Q", mood: .happy).frame(width: 90, height: 90)
+            ChessPiece(piece: "Q", mood: .happy).frame(width: 90, height: 90)
             Text("Meowy's AI chat is optional").font(.title3.bold())
             Text("Everything else in Meow Chess works without it. To chat with Meowy, open Settings → Meowy AI and add any OpenAI-compatible service: OpenAI, OpenRouter, or a model running on your own computer. You use your own API key.")
                 .multilineTextAlignment(.center)

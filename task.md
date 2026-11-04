@@ -74,3 +74,41 @@ Status key: `[x]` done, `[~]` in progress, `[ ]` not started.
 
 - [ ] Optional Stockfish for deeper checks
 - [ ] Recalibrate the rating formula once more games at other ratings are reviewed
+
+## Testing feedback (November 3, 2026)
+
+- [x] Choose Cat or Classic at sign-up and in Settings; persist the choice and use it for
+  board, sliding/captured pieces, and piece illustrations. Bundle cburnett SVGs under its
+  BSD 3-Clause option, with a Settings credit and the full license.
+- [x] Filter games by Bullet / Blitz / Rapid, adding Daily only when needed; start at the
+  latest game's time control and remember an explicit selection.
+- [x] Show `Acc 87` in the list and `Accuracy 87.3` in reviews, without percent signs.
+- [x] Hide the review tab bar and reduce board side margins; restore tabs on return.
+- [x] Replace the old buzzy meows with original short, quiet, smoothly enveloped synthesis;
+  normal moves last 90 ms. Preserve SoundPlayer timing and file names.
+- [x] Automatically review the newest ten games after loading, skipping saved/running work.
+  Unfinished recent rows are disabled and show waiting/reviewing progress; older games
+  retain analysis on opening. Persist reviews atomically before making them available.
+- [x] Default questions to Key moments: deterministically select up to three worst losses,
+  then at most one successful tactic if a slot remains. Review toggle shares the setting.
+- [x] Regenerated the engine framework and Xcode project; `cargo test --release` passed
+  all 30 tests without warnings. The final simulator build printed `BUILD SUCCEEDED`.
+- [x] Added three question-selection regression tests (all pass) and expanded UI coverage
+  for piece selection, tab filtering/persistence, Daily visibility, pending rows, review
+  sizing, tab-bar restoration, accuracy labels, and the shared question setting.
+- [x] Saved and inspected all four screenshots in `screenshots/testing-feedback/`.
+  The pending-games screenshot uses deterministic debug fixtures and the real engine.
+- [x] Reviewed the implementation diff, including asset attribution and persisted-review
+  handling. No Rust, authentication, secret handling, or SoundPlayer trigger changes.
+- [x] Make the complete UI suite green. Root cause of the flaky taps: every piece observed the
+  whole Store, so each analysis progress tick redrew every board and row. Pieces now read the
+  setting directly and progress is throttled to 2% steps. The board also shrinks when the keyboard
+  is up so the typed answer stays visible. Mock AI is on port 18765 (8765 was taken).
+  `MEOW_BUILD="$PWD/ios/build/UITestBuild" scripts/run-ui-tests.sh`: `** TEST SUCCEEDED **`,
+  3 unit tests and 4 UI tests passed.
+- [x] Review fixes: a failed automatic review no longer locks the game, the retry button shows
+  only after a failed review, a username change mid-refresh keeps the new user's games, the review
+  Questions switch restores the previous mode, and mistake ranking no longer mixes units.
+- [ ] Visual follow-up: disabled rows are quite dim, and the black classic preview piece has low
+  contrast against the dark welcome screen.
+- [ ] Owner to listen to the new sounds on a phone.

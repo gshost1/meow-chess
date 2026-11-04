@@ -165,7 +165,7 @@ struct CoachView: View {
             List {
                 Section {
                     HStack(spacing: 12) {
-                        CatPiece(piece: "Q", mood: .happy).frame(width: 64, height: 64)
+                        ChessPiece(piece: "Q", mood: .happy).frame(width: 64, height: 64)
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Hi, I'm Meowy!").font(.title3.bold())
                             Text(s.games == 0
