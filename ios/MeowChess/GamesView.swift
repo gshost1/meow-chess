@@ -102,7 +102,7 @@ struct GameRow: View {
             if store.reviewIsRequired(game) {
                 VStack(spacing: 3) {
                     Text(store.isAnalyzing(game) ? "Reviewing…" : "Waiting…").font(.caption2)
-                    ProgressView(value: store.progress[game.id] ?? 0).frame(width: 60)
+                    ReviewProgressBar(progress: store.reviewProgress, id: game.id).frame(width: 60)
                 }
                 .accessibilityIdentifier("review-progress")
             } else if let a = store.analyses[game.id] {
@@ -150,7 +150,7 @@ struct GameDetailView: View {
                 VStack(spacing: 18) {
                     ChessPiece(piece: "N", mood: .normal).frame(width: 80, height: 80)
                     Text("Meowy is reviewing your game…").font(.title3.bold())
-                    ProgressView(value: store.progress[game.id] ?? 0)
+                    ReviewProgressBar(progress: store.reviewProgress, id: game.id)
                         .padding(.horizontal, 48)
                     Text("The Rust engine is checking every position and working out the idea behind each move.")
                         .font(.footnote).foregroundStyle(.secondary)

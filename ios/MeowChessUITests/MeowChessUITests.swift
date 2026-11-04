@@ -288,7 +288,12 @@ final class MeowChessUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["vs DailyCat"].firstMatch.waitForExistence(timeout: 5))
         let older = app.buttons["game-fixture-11"]
         XCTAssertTrue(older.isEnabled, "older games can open before analysis")
-        older.tap()
+        // With "fast" strength the background queue finishes a game every second or so, and a list
+        // redraw at that moment can drop a tap. Real strengths redraw far less often.
+        for _ in 0..<3 where !app.staticTexts["Meowy is reviewing your game…"].exists && !app.buttons["Next move"].exists {
+            older.tap()
+            _ = app.staticTexts["Meowy is reviewing your game…"].waitForExistence(timeout: 3)
+        }
         waitForReview()
         XCTAssertFalse(app.tabBars.firstMatch.exists)
     }

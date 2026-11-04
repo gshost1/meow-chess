@@ -50,7 +50,11 @@ final class Store: ObservableObject {
 
     @Published var games: [ChessComGame] = []
     @Published var analyses: [String: GameAnalysis] = [:]
+    /// Which games are being reviewed. Changes only when a review starts or ends.
     @Published var progress: [String: Double] = [:]
+    /// How far each running review is. Kept out of Store's own updates so progress ticks redraw only
+    /// the progress bars; redrawing whole screens mid-tap was cancelling taps on the games tabs.
+    let reviewProgress = ReviewProgress()
     @Published var loadingGames = false
     @Published var errorMessage: String?
     @Published var answers: [String: QuizAnswer] = [:]
@@ -177,15 +181,16 @@ final class Store: ObservableObject {
     func analyze(_ game: ChessComGame) async {
         guard let pgn = game.pgn, analyses[game.id] == nil, progress[game.id] == nil else { return }
         progress[game.id] = 0
-        defer { progress[game.id] = nil }
+        defer { progress[game.id] = nil; reviewProgress.values[game.id] = nil }
         let id = game.id
         do {
             let (analysis, data) = try await Engine.analyze(
                 pgn: pgn, username: username, msPerMove: strength.msPerMove
             ) { p in
                 Task { @MainActor in
-                    guard let old = self.progress[id] else { return }
-                    if p - old >= 0.02 || p >= 1 { self.progress[id] = p }
+                    guard self.progress[id] != nil else { return }
+                    let old = self.reviewProgress.values[id] ?? 0
+                    if p - old >= 0.02 || p >= 1 { self.reviewProgress.values[id] = p }
                 }
             }
             try data.write(to: folder.appendingPathComponent("\(id).json"), options: .atomic)
@@ -257,6 +262,18 @@ final class Store: ObservableObject {
         }
         analyses = [:]
     }
+}
+
+@MainActor
+final class ReviewProgress: ObservableObject {
+    @Published var values: [String: Double] = [:]
+}
+
+/// A progress bar that observes only review progress, not the whole Store.
+struct ReviewProgressBar: View {
+    @ObservedObject var progress: ReviewProgress
+    let id: String
+    var body: some View { ProgressView(value: progress.values[id] ?? 0) }
 }
 
 enum UITesting {
