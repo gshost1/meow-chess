@@ -237,7 +237,9 @@ final class MeowChessUITests: XCTestCase {
         app.launch()
         let tabs = app.segmentedControls["games-time-control"]
         XCTAssertTrue(tabs.waitForExistence(timeout: 15))
-        XCTAssertTrue(tabs.buttons["Rapid"].isSelected, "latest game determines the initial tab")
+        XCTAssertTrue(tabs.buttons["All"].isSelected, "All games show by default")
+        XCTAssertTrue(app.staticTexts["vs BulletCat"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["vs RapidCat"].firstMatch.exists)
         XCTAssertFalse(tabs.buttons["Daily"].exists)
         let latest = app.buttons["game-fixture-0"]
         XCTAssertTrue(latest.waitForExistence(timeout: 5))

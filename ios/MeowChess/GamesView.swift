@@ -5,11 +5,14 @@ struct GamesView: View {
     @State private var path: [ChessComGame] = []
 
     private var timeClasses: [String] {
-        ["bullet", "blitz", "rapid"] + (store.games.contains { $0.timeClass == "daily" } ? ["daily"] : [])
+        ["all", "bullet", "blitz", "rapid"] + (store.games.contains { $0.timeClass == "daily" } ? ["daily"] : [])
     }
     private var selectedTimeClass: String {
         if timeClasses.contains(store.gamesTimeClass) { return store.gamesTimeClass }
-        return store.games.first(where: { timeClasses.contains($0.timeClass ?? "") })?.timeClass ?? "rapid"
+        return "all"
+    }
+    private var shownGames: [ChessComGame] {
+        selectedTimeClass == "all" ? store.games : store.games.filter { $0.timeClass == selectedTimeClass }
     }
 
     var body: some View {
@@ -22,7 +25,7 @@ struct GamesView: View {
                     ContentUnavailableView("No games yet", systemImage: "magnifyingglass",
                                            description: Text("Pull down to load your Chess.com games."))
                 }
-                ForEach(store.games.filter { $0.timeClass == selectedTimeClass }) { game in
+                ForEach(shownGames) { game in
                     NavigationLink(value: game) {
                         GameRow(game: game)
                     }
@@ -45,6 +48,8 @@ struct GamesView: View {
             }
             .listStyle(.plain)
             .navigationTitle("Your games")
+            // A small title keeps the time-control tabs at the top instead of below a large blank title area.
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: ChessComGame.self) { game in
                 GameDetailView(game: game)
             }
