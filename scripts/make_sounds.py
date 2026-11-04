@@ -1,78 +1,128 @@
 #!/usr/bin/env python3
-"""Original synthesized cat mews for Meow Chess; no recordings or third-party audio.
+"""Three original synthesized packs. Pure Python; no recordings or external audio.
 
-Pure Python. Run from the repo root: python3 scripts/make_sounds.py.
-A rounded voice with smoothly gliding pitch/vowels, four soft partials, and a
-raised-sine envelope avoids the old bright, jittery, high-harmonic buzz.
+Run from the repo root. Every event has a distinct gesture (rhythm, contour or
+voice), not merely a transposition. Deterministic noise keeps regeneration exact.
 """
 import math
 from pathlib import Path
+import random
 import struct
 import wave
 
 RATE = 44100
-OUT = Path(__file__).resolve().parent.parent / "ios/MeowChess/Sounds"
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / 'ios/MeowChess/Sounds'
+PREVIEWS = ROOT / 'screenshots/sound-previews'
+EVENTS = ('move', 'capture', 'check', 'checkmate', 'castle', 'blunder',
+          'mistake', 'inaccuracy', 'best', 'correct', 'wrong')
 
 
-def glide(points, x):
-    for (x0, y0), (x1, y1) in zip(points, points[1:]):
-        if x <= x1:
-            t = max(0, min(1, (x - x0) / (x1 - x0)))
-            t = (1 - math.cos(math.pi * t)) / 2
-            return y0 + (y1 - y0) * t
-    return points[-1][1]
-
-
-def mew(duration, pitches, gain):
-    n = round(duration * RATE)
+def voice(duration, pitches, gain=0.12, kind='mew', roll=0):
     phase = 0.0
+    noise = random.Random(41)
+    filtered = 0.0
     samples = []
+    n = round(duration * RATE)
     for i in range(n):
         x = i / (n - 1)
         t = i / RATE
-        frequency = glide(pitches, x) * (1 + 0.006 * math.sin(2 * math.pi * 5 * t))
-        phase += 2 * math.pi * frequency / RATE
-        # Closed "m", opening "ee-ah", then closing "ow". Keep the fundamental
-        # dominant; higher partials roll off rapidly and remain far below clipping.
-        opening = math.sin(math.pi * x) ** 2
-        tone = (math.sin(phase)
-                + (0.10 + 0.12 * opening) * math.sin(2 * phase)
-                + 0.045 * opening * math.sin(3 * phase)
-                + 0.012 * opening * math.sin(4 * phase)) / 1.3
-        envelope = math.sin(math.pi * x) ** 1.8
-        samples.append(gain * envelope * tone)
+        segment = min(int(x * (len(pitches) - 1)), len(pitches) - 2)
+        u = (x * (len(pitches) - 1) - segment)
+        u = (1 - math.cos(math.pi * u)) / 2
+        hz = pitches[segment] + (pitches[segment + 1] - pitches[segment]) * u
+        phase += 2 * math.pi * hz / RATE
+        filtered = 0.84 * filtered + 0.16 * noise.uniform(-1, 1)
+        if kind == 'mew':
+            tone = (math.sin(phase) + 0.18 * math.sin(2 * phase)
+                    + 0.04 * math.sin(3 * phase)) / 1.22
+        elif kind == 'chirp':
+            tone = (math.sin(phase) + 0.11 * math.sin(3 * phase)) / 1.11
+        elif kind == 'purr':
+            tone = (0.65 * math.sin(phase) + 0.3 * filtered) * (0.55 + 0.45 * math.sin(2 * math.pi * 27 * t))
+        elif kind == 'puff':
+            tone = filtered * 1.8
+        else:  # a round, damped paw pop
+            tone = math.sin(phase) * math.exp(-5 * x)
+        envelope = math.sin(math.pi * x) ** (1.7 if kind != 'pop' else 0.7)
+        tremolo = 0.65 + 0.35 * math.cos(2 * math.pi * roll * t) if roll else 1
+        samples.append(gain * envelope * tremolo * tone)
     return samples
 
 
-def write(name, samples):
-    OUT.mkdir(parents=True, exist_ok=True)
-    assert max(abs(s) for s in samples) < 0.25
-    with wave.open(str(OUT / (name + ".wav")), "wb") as out:
-        out.setnchannels(1)
-        out.setsampwidth(2)
-        out.setframerate(RATE)
-        out.writeframes(b"".join(struct.pack("<h", round(s * 32767)) for s in samples))
-    print(f"{name:12s} {len(samples) / RATE:.2f}s, peak {max(abs(s) for s in samples):.3f}")
+def phrase(*gestures):
+    samples = []
+    for duration, pitches, kind, gain, roll in gestures:
+        if samples:
+            samples.extend([0.0] * round(0.035 * RATE))
+        samples.extend(voice(duration, pitches, gain, kind, roll))
+    return samples
+
+
+def g(duration, pitches, kind='mew', gain=0.13, roll=0):
+    return duration, pitches, kind, gain, roll
+
+
+def packs():
+    soft = {
+        'move': [g(.075, [440, 540, 410], gain=.065)],
+        'capture': [g(.07, [380, 600]), g(.13, [590, 350])],
+        'check': [g(.19, [460, 800, 800], roll=15)],
+        'checkmate': [g(.12, [520, 650]), g(.12, [650, 760]), g(.24, [760, 480])],
+        'castle': [g(.10, [340, 440]), g(.10, [440, 340])],
+        'blunder': [g(.34, [620, 500, 260], roll=9)],
+        'mistake': [g(.17, [380, 390, 700])],
+        'inaccuracy': [g(.09, [480, 430])],
+        'best': [g(.17, [480, 760, 600], kind='chirp')],
+        'correct': [g(.10, [440, 620]), g(.23, [620, 850, 660], roll=22)],
+        'wrong': [g(.08, [420, 340]), g(.12, [340, 260])],
+    }
+    chirps = {
+        'move': [g(.055, [680, 1050, 800], 'chirp', .055)],
+        'capture': [g(.07, [620, 1200], 'chirp'), g(.09, [1100, 600], 'chirp')],
+        'check': [g(.075, [950, 1300], 'chirp'), g(.075, [950, 1300], 'chirp')],
+        'checkmate': [g(.10, [600, 1000], 'chirp'), g(.10, [750, 1250], 'chirp'), g(.27, [1000, 700], 'chirp', roll=28)],
+        'castle': [g(.23, [600, 850, 600], 'chirp', roll=24)],
+        'blunder': [g(.28, [1100, 700, 320], 'chirp', roll=13)],
+        'mistake': [g(.06, [650, 550], 'chirp'), g(.15, [550, 950], 'chirp')],
+        'inaccuracy': [g(.08, [850, 650, 800], 'chirp', .09)],
+        'best': [g(.20, [700, 1050], 'chirp', roll=32)],
+        'correct': [g(.08, [700, 1000], 'chirp'), g(.08, [900, 1200], 'chirp'), g(.20, [1100, 850], 'chirp', roll=35)],
+        'wrong': [g(.10, [750, 480], 'chirp'), g(.08, [650, 400], 'chirp')],
+    }
+    purrs = {
+        'move': [g(.065, [260, 100], 'pop', .12)],
+        'capture': [g(.07, [360, 130], 'pop', .20), g(.09, [150, 80], 'puff', .16)],
+        'check': [g(.07, [450, 240], 'pop', .20), g(.07, [450, 240], 'pop', .20)],
+        'checkmate': [g(.08, [300, 150], 'pop'), g(.10, [400, 200], 'pop'), g(.32, [160, 230, 150], 'purr', .20)],
+        'castle': [g(.07, [220, 120], 'pop'), g(.12, [160, 100], 'pop')],
+        'blunder': [g(.30, [150, 80], 'puff', .22)],
+        'mistake': [g(.07, [100, 100], 'puff', .16), g(.12, [220, 150], 'purr', .19)],
+        'inaccuracy': [g(.09, [120, 80], 'puff', .13)],
+        'best': [g(.24, [130, 200, 150], 'purr', .20)],
+        'correct': [g(.09, [300, 150], 'pop'), g(.32, [140, 230, 180], 'purr', .22)],
+        'wrong': [g(.10, [110, 80], 'puff', .20), g(.10, [110, 80], 'puff', .20)],
+    }
+    return {'soft': soft, 'chirps': chirps, 'purrs': purrs}
 
 
 def main():
-    # All are short cat vocal gestures. Ordinary moves stay especially quiet.
-    sounds = {
-        "move": (0.09, [460, 560, 410], 0.075),
-        "capture": (0.20, [420, 620, 390], 0.15),
-        "check": (0.24, [560, 740, 520], 0.17),
-        "checkmate": (0.42, [400, 690, 350], 0.18),
-        "castle": (0.23, [360, 500, 440], 0.13),
-        "blunder": (0.36, [560, 450, 300], 0.15),
-        "mistake": (0.22, [400, 460, 640], 0.13),
-        "inaccuracy": (0.16, [380, 420, 480], 0.10),
-        "best": (0.21, [520, 720, 580], 0.14),
-        "correct": (0.30, [450, 730, 610], 0.16),
-        "wrong": (0.24, [380, 340, 280], 0.12),
-    }
-    for name, (duration, pitches, gain) in sounds.items():
-        write(name, mew(duration, list(zip([0, 0.45, 1], pitches)), gain))
+    for pack, sounds in packs().items():
+        assert set(sounds) == set(EVENTS)
+        for event, gestures in sounds.items():
+            samples = phrase(*gestures)
+            assert max(abs(s) for s in samples) < .25
+            # Prefixes survive Xcode resource flattening without name collisions.
+            name = f'{pack}_{event}.wav'
+            for target in (OUT / name, PREVIEWS / pack / f'{event}.wav'):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with wave.open(str(target), 'wb') as out:
+                    out.setnchannels(1)
+                    out.setsampwidth(2)
+                    out.setframerate(RATE)
+                    out.writeframes(b''.join(struct.pack('<h', round(s * 32767)) for s in samples))
+            print(f'{pack}/{event}: {len(samples) / RATE:.3f}s')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

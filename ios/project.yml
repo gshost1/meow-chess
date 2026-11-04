@@ -11,7 +11,11 @@ targets:
     type: application
     platform: iOS
     sources:
-      - MeowChess
+      - path: MeowChess
+        excludes: [Sounds]
+      # Unique pack_event names are copied into the bundle without folder ambiguity.
+      - path: MeowChess/Sounds
+        buildPhase: resources
     dependencies:
       - framework: ChessCore.xcframework
         embed: false
