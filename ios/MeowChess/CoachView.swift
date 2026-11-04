@@ -90,7 +90,6 @@ struct CoachView: View {
         var games = 0
         var mistakes = 0
         var moves = 0
-        var cpLoss = 0
         var tagCounts: [String: Int] = [:]
         var phaseCounts: [String: Int] = [:]
         var categoryCounts: [IdeaCategory: Int] = [:]
@@ -99,7 +98,6 @@ struct CoachView: View {
         var castledByTen = 0
         var blunders = 0
         var accuracies: [(Date, Double)] = []
-        var ratings: [(Date, Int)] = []
         var plans: [(String, PlanSummary)] = []
         var quizRight = 0
         var quizWrong = 0
@@ -125,12 +123,6 @@ struct CoachView: View {
             s.blunders += summary.blunder
             let date = game.endDate ?? .now
             s.accuracies.append((date, summary.accuracy))
-            let mine = a.moves.filter { $0.isWhite == white }
-            if !mine.isEmpty {
-                // Recomputed rather than read from the saved review so older reviews use the current formula.
-                let loss = mine.reduce(0) { $0 + ($1.cpLoss ?? 0) }
-                s.ratings.append((date, Self.rating(acpl: Double(loss) / Double(mine.count))))
-            }
             if let plan = summary.plan {
                 s.styleCounts[plan.style, default: 0] += 1
                 s.focusCounts[plan.focus, default: 0] += 1
@@ -138,7 +130,6 @@ struct CoachView: View {
             }
             for m in a.moves where m.isWhite == white {
                 s.moves += 1
-                s.cpLoss += m.cpLoss ?? 0
                 for c in Set((m.ideas ?? []).map(\.category)) { s.categoryCounts[c, default: 0] += 1 }
                 if let ans = store.answers[Store.answerKey(game: game.id, ply: m.ply)] {
                     if ans.choice == "unsure" { s.quizUnsure += 1 }
@@ -169,7 +160,7 @@ struct CoachView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Hi, I'm Meowy!").font(.title3.bold())
                             Text(s.games == 0
-                                 ? "Review a few games and I'll tell you how strong you play, what your style is, and what to practice."
+                                 ? "Review a few games and I'll tell you your accuracy, your style, and what to practice."
                                  : "I looked at \(s.games) of your games. Here's what I found.")
                                 .font(.callout).foregroundStyle(.secondary)
                         }
@@ -212,13 +203,12 @@ struct CoachView: View {
     }
 
     private func strengthSection(_ s: Stats) -> some View {
-        let acpl = Double(s.cpLoss) / Double(max(s.moves, 1))
-        let est = Self.rating(acpl: acpl)
-        return Section("Your playing strength") {
+        let avg = s.accuracies.map(\.1).reduce(0, +) / Double(max(s.accuracies.count, 1))
+        return Section("Your accuracy") {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading) {
-                    Text("~\(est)").font(.system(size: 40, weight: .heavy, design: .rounded))
-                    Text("how you actually play").font(.caption).foregroundStyle(.secondary)
+                    Text(String(format: "%.0f", avg)).font(.system(size: 40, weight: .heavy, design: .rounded))
+                    Text("average accuracy").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if let r = s.chessComRating {
@@ -228,21 +218,11 @@ struct CoachView: View {
                     }
                 }
             }
-            if let r = s.chessComRating {
-                Text(est > r + 100
-                     ? "You're playing better than your rating shows. Cut down the blunders and your rating will catch up."
-                     : est < r - 100
-                     ? "Your rating is ahead of your accuracy right now. Slowing down before each move will help."
-                     : "Your rating matches how you play. Fixing your top habit below is the fastest way up.")
-                    .font(.callout)
-            }
-            Text(String(format: "A rough guess from an average loss of %.0f centipawns (hundredths of a pawn) per move across %d moves. Single games swing a lot; it gets steadier as you review more.", acpl, s.moves))
-                .font(.caption).foregroundStyle(.secondary)
-            if s.ratings.count >= 2 {
-                Chart(Array(s.ratings.sorted { $0.0 < $1.0 }.enumerated()), id: \.offset) { i, p in
-                    LineMark(x: .value("Game", i + 1), y: .value("Strength", p.1))
+            if s.accuracies.count >= 2 {
+                Chart(Array(s.accuracies.sorted { $0.0 < $1.0 }.enumerated()), id: \.offset) { i, p in
+                    LineMark(x: .value("Game", i + 1), y: .value("Accuracy", p.1))
                         .interpolationMethod(.catmullRom)
-                    PointMark(x: .value("Game", i + 1), y: .value("Strength", p.1))
+                    PointMark(x: .value("Game", i + 1), y: .value("Accuracy", p.1))
                 }
                 .frame(height: 120)
             }
@@ -348,7 +328,7 @@ struct CoachView: View {
         let answered = s.quizRight + s.quizWrong
         return Section("Knowing your own ideas") {
             if answered > 0 {
-                Text("You described your own idea correctly \(s.quizRight * 100 / answered)% of the time (\(answered) answers).")
+                Text("You described your own idea correctly \(s.quizRight * 100 / answered)% of the time (\(answered) \(answered == 1 ? "answer" : "answers")).")
             }
             if s.quizUnsure > 0 {
                 Text("You weren't sure about \(s.quizUnsure) move\(s.quizUnsure == 1 ? "" : "s"). Try to have a reason for every move, even a simple one.")
@@ -362,10 +342,10 @@ struct CoachView: View {
     private func askPlan(_ s: Stats, top: [String]) async {
         aiLoading = true
         aiError = nil
-        let acpl = Double(s.cpLoss) / Double(max(s.moves, 1))
+        let avg = s.accuracies.map(\.1).reduce(0, +) / Double(max(s.accuracies.count, 1))
         let style = s.styleCounts.max { $0.value < $1.value }?.key ?? "Balanced"
         var facts = [
-            "Games reviewed: \(s.games). Estimated playing strength: ~\(Self.rating(acpl: acpl)). Chess.com rating: \(s.chessComRating.map(String.init) ?? "unknown").",
+            "Games reviewed: \(s.games). Average accuracy: \(String(format: "%.0f", avg)). Chess.com rating: \(s.chessComRating.map(String.init) ?? "unknown").",
             "Blunders per game: \(String(format: "%.1f", Double(s.blunders) / Double(max(s.games, 1)))). Style: \(style).",
             "Castled by move 10 in \(s.castledByTen) of \(s.games) games.",
             "Mistakes by phase: " + ["opening", "middlegame", "endgame"].map { "\($0) \(s.phaseCounts[$0] ?? 0)" }.joined(separator: ", ") + ".",
@@ -375,7 +355,7 @@ struct CoachView: View {
             facts.append("Correctly described their own move ideas \(s.quizRight) of \(s.quizRight + s.quizWrong) times.")
         }
         let messages = [
-            ChatMessage(role: "system", content: AIService.systemPrompt(rating: Self.rating(acpl: acpl)) + "\n\nPlayer facts:\n" + facts.joined(separator: "\n")),
+            ChatMessage(role: "system", content: AIService.systemPrompt(rating: s.chessComRating) + "\n\nPlayer facts:\n" + facts.joined(separator: "\n")),
             ChatMessage(role: "user", content: "Write me a one-week training plan with 3 daily habits, based on my facts. Keep it short and encouraging."),
         ]
         do {

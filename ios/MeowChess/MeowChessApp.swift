@@ -48,19 +48,23 @@ struct RootView: View {
 struct WelcomeView: View {
     @EnvironmentObject var store: Store
     @State private var name = ""
+    @State private var keyboardUp = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            HStack(spacing: -10) {
-                ChessPiece(piece: "N", mood: .happy).frame(width: 90, height: 90)
-                ChessPiece(piece: "Q", mood: .happy).frame(width: 110, height: 110)
-                ChessPiece(piece: "p", mood: .normal).frame(width: 80, height: 80)
+        VStack(spacing: keyboardUp ? 12 : 24) {
+            Spacer(minLength: 8)
+            if !keyboardUp {
+                HStack(spacing: -10) {
+                    ChessPiece(piece: "N", mood: .happy).frame(width: 90, height: 90)
+                    ChessPiece(piece: "Q", mood: .happy).frame(width: 110, height: 110)
+                    ChessPiece(piece: "p", mood: .normal).frame(width: 80, height: 80)
+                }
             }
             Text("Meow Chess").font(.largeTitle.bold())
             Text("Meowy, your cat coach, reviews your Chess.com games with a chess engine built in Rust and explains every move in plain English.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal)
             TextField("Chess.com username", text: $name)
                 .textInputAutocapitalization(.never)
@@ -68,18 +72,37 @@ struct WelcomeView: View {
                 .padding()
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.15)))
                 .padding(.horizontal, 32)
+                .onChange(of: name) { _, new in fixDashes(new) }
+            if ChessComUsername.needsHint(name) {
+                Text("Enter your Chess.com username")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             PieceStylePicker()
                 .padding(.horizontal, 32)
             Button {
-                store.username = name.trimmingCharacters(in: .whitespaces)
-                Task { await store.refreshGames() }
+                store.replaceUsername(name)
             } label: {
                 Text("Get my games").bold().frame(maxWidth: .infinity).padding()
             }
             .buttonStyle(.borderedProminent)
             .padding(.horizontal, 32)
-            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            Spacer()
+            .disabled(ChessComUsername.normalize(name).isEmpty)
+            Spacer(minLength: 8)
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardUp = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardUp = false
+        }
+    }
+
+    /// iOS replaces a typed `--` with an em dash. Put the dashes back while the field is open.
+    private func fixDashes(_ new: String) {
+        let fixed = new
+            .replacingOccurrences(of: "\u{2014}", with: "--")
+            .replacingOccurrences(of: "\u{2013}", with: "-")
+        if fixed != new { name = fixed }
     }
 }

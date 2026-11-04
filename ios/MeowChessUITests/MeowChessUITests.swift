@@ -119,7 +119,8 @@ final class MeowChessUITests: XCTestCase {
 
         // Coach tab.
         app.tabBars.buttons["Meowy"].tap()
-        XCTAssertTrue(app.staticTexts["how you actually play"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["average accuracy"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'played like'")).firstMatch.exists)
 
         // Practice: make sure there is at least one puzzle, then solve it by tapping squares.
         app.tabBars.buttons["Practice"].tap()
@@ -259,10 +260,11 @@ final class MeowChessUITests: XCTestCase {
         openFirstGame()
         waitForReview()
         XCTAssertFalse(app.tabBars.firstMatch.exists)
-        let questions = app.switches["review-questions"]
-        XCTAssertEqual(questions.value as? String, "1")
-        flip(questions)
-        XCTAssertTrue(waitForValue(questions, "0"))
+        let questions = app.buttons["review-questions"]
+        XCTAssertTrue(questions.waitForExistence(timeout: 5))
+        XCTAssertEqual(questions.value as? String, "on")
+        questions.tap()
+        XCTAssertTrue(waitForValue(questions, "off"))
         leaveReview()
         app.tabBars.buttons["Settings"].tap()
         let picker = app.buttons["settings-quiz-mode"]
@@ -271,7 +273,10 @@ final class MeowChessUITests: XCTestCase {
         app.tabBars.buttons["Games"].tap()
         openFirstGame()
         waitForReview()
-        flip(questions)
+        let questionsAgain = app.buttons["review-questions"]
+        XCTAssertTrue(questionsAgain.waitForExistence(timeout: 5))
+        questionsAgain.tap()
+        XCTAssertTrue(waitForValue(questionsAgain, "on"))
         leaveReview()
         app.tabBars.buttons["Settings"].tap()
         scrollTo(picker)

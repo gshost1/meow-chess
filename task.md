@@ -112,3 +112,32 @@ Status key: `[x]` done, `[~]` in progress, `[ ]` not started.
 - [ ] Visual follow-up: disabled rows are quite dim, and the black classic preview piece has low
   contrast against the dark welcome screen.
 - [ ] Owner to listen to the new sounds on a phone.
+
+## QA fixes (November 3, 2026)
+
+First pass over the tester shots. Swift only. The ACPL rating curve stays in the engine and in
+saved JSON so old reviews still load; the app just stops showing it.
+
+- [x] Review board stays full width at the start and while the keyboard is up. A question or
+  explanation shrinks it only enough to keep the card on screen (300pt for a question, 256pt for
+  an explanation, 168pt of chrome).
+- [x] Questions control is a toolbar button (`review-questions`). The move strip has the full width.
+- [x] Next mistake jumps to mistakes and blunders, and to inaccuracies only when the game has
+  nothing worse. Red arrows still mark inaccuracies.
+- [x] An empty time-control tab says "No rapid games in your recent games." when other games loaded.
+- [x] A Chess.com month that 404s is skipped. The load fails only when the archives list fails, or
+  every month fails.
+- [x] A failed load shows one message. An unknown player says there is no Chess.com player by that name.
+- [x] Usernames drop spaces and symbols, turn an em dash into `--` and an en dash into `-`, and a
+  field that is only junk shows "Enter your Chess.com username".
+- [x] The eval number stays on one line.
+- [x] Answer counts read "1 answer" / "2 answers".
+- [x] A bad quiz reply is a full sentence, for example "But it backfired: the move ignores a threat."
+- [x] The sign-up tagline wraps, and the hero art hides while the keyboard is up.
+- [x] "Played like ~N" is gone from the review intro, the summary accuracy blocks, the Meowy chat
+  rating, and the Meowy tab. Accuracy stays, and the Meowy tab still shows the real Chess.com rating.
+- [x] `cargo test --release`: 30 passed. `MEOW_BUILD="$PWD/ios/build/UITestBuild" scripts/run-ui-tests.sh`:
+  `** TEST SUCCEEDED **`, 7 unit tests and 4 UI tests. Rust sources were not changed.
+- [x] Checked on MeowQA-1: the quiz fits without scrolling, Rapid shows the empty-filter message,
+  a missing player shows only the not-found message, and Meowy shows accuracy without a rating
+  estimate. Shots are in `screenshots/qa-fixes/`.

@@ -18,12 +18,20 @@ struct GamesView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                if let error = store.errorMessage {
+                if let error = store.errorMessage, !store.games.isEmpty {
                     Text(error).foregroundStyle(.red).font(.footnote)
                 }
                 if store.games.isEmpty && !store.loadingGames {
-                    ContentUnavailableView("No games yet", systemImage: "magnifyingglass",
-                                           description: Text("Pull down to load your Chess.com games."))
+                    if let error = store.errorMessage {
+                        ContentUnavailableView("Couldn't load games", systemImage: "exclamationmark.triangle",
+                                               description: Text(error))
+                    } else {
+                        ContentUnavailableView("No games yet", systemImage: "magnifyingglass",
+                                               description: Text("Pull down to load your Chess.com games."))
+                    }
+                } else if !store.games.isEmpty && shownGames.isEmpty {
+                    ContentUnavailableView("No \(selectedTimeClass) games in your recent games.",
+                                           systemImage: "magnifyingglass")
                 }
                 ForEach(shownGames) { game in
                     NavigationLink(value: game) {

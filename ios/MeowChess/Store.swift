@@ -134,8 +134,23 @@ final class Store: ObservableObject {
 
     // MARK: Chess.com
 
+    private enum ChessComLoadError: Error, Equatable {
+        case notFound
+        case failed
+    }
+
+    /// Saves a Chess.com username and reloads that player's games.
+    func replaceUsername(_ raw: String) {
+        let name = ChessComUsername.normalize(raw)
+        guard !name.isEmpty else { return }
+        username = name
+        games = []
+        errorMessage = nil
+        Task { await refreshGames() }
+    }
+
     func refreshGames() async {
-        let user = username.trimmingCharacters(in: .whitespaces).lowercased()
+        let user = ChessComUsername.normalize(username).lowercased()
         guard !user.isEmpty, loadingUser != user else { return }
         loadingUser = user
         loadingGames = true
@@ -146,29 +161,53 @@ final class Store: ObservableObject {
         do {
             let archives: ChessComArchives = try await fetch("https://api.chess.com/pub/player/\(user)/games/archives")
             var collected: [ChessComGame] = []
+            var succeeded = 0
+            var failed = 0
             // Most recent months first, until we have a decent number of games.
+            // Chess.com lists the current month even when it has no games yet, and that URL 404s.
             for url in archives.archives.reversed() {
-                let month: ChessComMonth = try await fetch(url)
-                collected += month.games.filter { ($0.rules ?? "chess") == "chess" && $0.pgn != nil }
-                if collected.count >= 40 { break }
+                do {
+                    let month: ChessComMonth = try await fetch(url)
+                    succeeded += 1
+                    collected += month.games.filter { ($0.rules ?? "chess") == "chess" && $0.pgn != nil }
+                    if collected.count >= 40 { break }
+                } catch {
+                    failed += 1
+                }
             }
             // The username changed while this was loading: keep the newer user's games.
             guard loadingUser == user else { return }
+            if succeeded == 0 && failed > 0 {
+                errorMessage = Self.gamesLoadError(for: user)
+                return
+            }
             games = collected.sorted { ($0.endTime ?? 0) > ($1.endTime ?? 0) }
             startRecentAnalysis()
             if let data = try? JSONEncoder().encode(games) { try? data.write(to: gamesCacheURL) }
+        } catch let error as ChessComLoadError {
+            guard loadingUser == user else { return }
+            errorMessage = error == .notFound
+                ? "There's no Chess.com player named \(user)."
+                : Self.gamesLoadError(for: user)
         } catch {
             guard loadingUser == user else { return }
-            errorMessage = "Couldn't load games for \(user). Check the username and your connection."
+            errorMessage = Self.gamesLoadError(for: user)
         }
     }
 
+    private static func gamesLoadError(for user: String) -> String {
+        "Couldn't load games for \(user). Check the username and your connection."
+    }
+
     private func fetch<T: Decodable>(_ urlString: String) async throws -> T {
-        guard let url = URL(string: urlString) else { throw URLError(.badURL) }
+        guard let url = URL(string: urlString) else { throw ChessComLoadError.failed }
         var req = URLRequest(url: url)
         req.setValue("MeowChess-iOS/1.0", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
-        if let http = resp as? HTTPURLResponse, http.statusCode != 200 { throw URLError(.badServerResponse) }
+        if let http = resp as? HTTPURLResponse {
+            if http.statusCode == 404 { throw ChessComLoadError.notFound }
+            if http.statusCode != 200 { throw ChessComLoadError.failed }
+        }
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
         return try d.decode(T.self, from: data)

@@ -308,3 +308,24 @@ struct ChessComGame: Codable, Hashable, Identifiable {
 
 struct ChessComArchives: Codable { let archives: [String] }
 struct ChessComMonth: Codable { let games: [ChessComGame] }
+
+/// Chess.com usernames are letters, digits, `_` and `-`. iOS turns a typed `--` into an em dash.
+enum ChessComUsername {
+    static func normalize(_ raw: String) -> String {
+        let dashed = raw
+            .replacingOccurrences(of: "\u{2014}", with: "--")
+            .replacingOccurrences(of: "\u{2013}", with: "-")
+        return String(dashed.unicodeScalars.filter { scalar in
+            let v = scalar.value
+            let digit = (48...57).contains(v)
+            let upper = (65...90).contains(v)
+            let lower = (97...122).contains(v)
+            return digit || upper || lower || scalar == "_" || scalar == "-"
+        })
+    }
+
+    /// True when the field isn't empty but nothing usable remains (for example a name made only of spaces).
+    static func needsHint(_ raw: String) -> Bool {
+        !raw.isEmpty && normalize(raw).isEmpty
+    }
+}
