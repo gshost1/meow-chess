@@ -91,7 +91,40 @@ Status key: `[x]` done, `[~]` in progress, `[ ]` not started.
   retain analysis on opening. Persist reviews atomically before making them available.
 - [x] Default questions to Key moments: deterministically select up to three worst losses,
   then at most one successful tactic if a slot remains. Review toggle shares the setting.
-- [~] Verification: Rust 30/30 passed; initial simulator build succeeded; expanded UI tests
-  and question-selection regression tests running. Mock AI moved to port 18765 because
-  a pre-existing HTTP server occupies 8765.
-- [ ] Inspect and save required simulator screenshots; final review, commit, push branch.
+- [x] Regenerated the engine framework and Xcode project; `cargo test --release` passed
+  all 30 tests without warnings. The final simulator build printed `BUILD SUCCEEDED`.
+- [x] Added three question-selection regression tests (all pass) and expanded UI coverage
+  for piece selection, tab filtering/persistence, Daily visibility, pending rows, review
+  sizing, tab-bar restoration, accuracy labels, and the shared question setting.
+- [x] Saved and inspected all four screenshots in `screenshots/testing-feedback/`.
+  The pending-games screenshot uses deterministic debug fixtures and the real engine.
+- [x] Reviewed the implementation diff, including asset attribution and persisted-review
+  handling. No Rust, authentication, secret handling, or SoundPlayer trigger changes.
+- [ ] Make the complete UI suite green. Stopped after the second honest full test attempt,
+  as instructed: 3 unit tests and the fresh-install UI journey passed; 3 UI tests failed.
+  The first attempt also exposed an offscreen Settings sound switch (fixed in the tests).
+  Mock AI moved to port 18765 because a pre-existing HTTP server occupies 8765.
+
+### Remaining failures (verbatim, final run)
+
+Command: `MEOW_BUILD="$PWD/ios/build/UITestBuild" scripts/run-ui-tests.sh`
+Result: `** TEST FAILED **` (4 passed, 3 failed across unit and UI targets).
+Local result bundle: `ios/build/UITestBuild/UITests-20261103-205133.xcresult`.
+Local full log: `ios/build/UITestBuild/xcodebuild.log`.
+
+```text
+MeowChessUITests.swift:205: error: -[MeowChessUITests.MeowChessUITests test2_SettingsAndOptionalAI] : Failed to not hittable: Button, {{351.0, 638.0}, {21.0, 19.3}}, identifier: 'quiz-send', label: 'Send to Jev'
+MeowChessUITests.swift:264: error: -[MeowChessUITests.MeowChessUITests test3_TimeControlsAndReviewDefaults] : XCTAssertTrue failed
+MeowChessUITests.swift:287: error: -[MeowChessUITests.MeowChessUITests test4_DailyTabOnlyWhenNeeded] : XCTAssertTrue failed
+```
+
+- Settings/AI test: the keyboard obscures the Jev send control with the full-width board.
+  The review needs a smaller board or another layout adjustment while the keyboard is open.
+- Questions test: the compact review toggle still does not change from on to off in the UI test.
+- Daily test: Daily exists, but tapping it leaves Rapid selected and no Daily row appears.
+  Tab changes also appeared inconsistent after relaunch in the persistence test. Investigate
+  control hit testing and AppStorage in Store; the underlying cause is not confirmed.
+- Visual follow-up: disabled rows are quite dim, and the black classic preview has low contrast
+  against the welcome screen background.
+- [ ] Coordinator follow-up: fix the remaining controls/layout issues and rerun UI tests.
+- Branch is pushed without a PR; do not merge or deploy this incomplete test state.

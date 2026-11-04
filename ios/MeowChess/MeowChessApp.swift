@@ -2,7 +2,13 @@ import SwiftUI
 
 @main
 struct MeowChessApp: App {
-    @StateObject private var store = Store()
+    @StateObject private var store: Store
+
+    init() {
+        // Reset before constructing any AppStorage wrappers, so their cached values are fresh.
+        if UITesting.resetRequested { Store.eraseEverything() }
+        _store = StateObject(wrappedValue: Store())
+    }
 
     var body: some Scene {
         WindowGroup {

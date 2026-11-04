@@ -27,35 +27,38 @@ struct ReviewView: View {
     private var mySummary: SideSummary { userIsWhite ? analysis.whiteSummary : analysis.blackSummary }
 
     var body: some View {
-        VStack(spacing: 8) {
-            playerStrip(white: !userIsWhite)
-            HStack(spacing: 6) {
-                EvalBar(eval: displayedEval, flipped: !userIsWhite)
-                boardView
-                    .gesture(DragGesture(minimumDistance: 20).onEnded { v in
-                        if v.translation.width < -30 { step(1) } else if v.translation.width > 30 { step(-1) }
-                    })
+        GeometryReader { geometry in
+            VStack(spacing: 8) {
+                playerStrip(white: !userIsWhite)
+                HStack(spacing: 6) {
+                    EvalBar(eval: displayedEval, flipped: !userIsWhite)
+                    boardView
+                        .gesture(DragGesture(minimumDistance: 20).onEnded { v in
+                            if v.translation.width < -30 { step(1) } else if v.translation.width > 30 { step(-1) }
+                        })
+                }
+                .padding(.horizontal, 2)
+                .frame(height: max(0, geometry.size.width - 32))
+                playerStrip(white: userIsWhite)
+                HStack {
+                    moveStrip
+                    Toggle("Questions", isOn: Binding(
+                        get: { store.quizMode != .off },
+                        set: { store.quizMode = $0 ? .key : .off }
+                    ))
+                    .font(.caption)
+                    .fixedSize()
+                    .accessibilityIdentifier("review-questions")
+                    .padding(.trailing, 10)
+                }
+                ScrollView {
+                    infoCard.padding(.horizontal)
+                }
+                .accessibilityIdentifier("info-scroll")
+                controls
             }
-            .padding(.horizontal, 2)
-            playerStrip(white: userIsWhite)
-            HStack {
-                moveStrip
-                Toggle("Questions", isOn: Binding(
-                    get: { store.quizMode != .off },
-                    set: { store.quizMode = $0 ? .key : .off }
-                ))
-                .font(.caption)
-                .fixedSize()
-                .accessibilityIdentifier("review-questions")
-                .padding(.trailing, 10)
-            }
-            ScrollView {
-                infoCard.padding(.horizontal)
-            }
-            .accessibilityIdentifier("info-scroll")
-            controls
+            .padding(.top, 4)
         }
-        .padding(.top, 4)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {

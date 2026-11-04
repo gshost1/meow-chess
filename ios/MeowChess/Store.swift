@@ -73,7 +73,6 @@ final class Store: ObservableObject {
     private var answersURL: URL { folder.deletingLastPathComponent().appendingPathComponent("answers.json") }
 
     init() {
-        if UITesting.resetRequested { Self.eraseEverything() }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         loadSaved()
         #if DEBUG
@@ -86,7 +85,7 @@ final class Store: ObservableObject {
     }
 
     /// Wipes saved games, reviews, answers, settings and AI keys so UI tests start like a fresh install.
-    private static func eraseEverything() {
+    static func eraseEverything() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         for f in (try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil)) ?? [] {
             try? FileManager.default.removeItem(at: f)

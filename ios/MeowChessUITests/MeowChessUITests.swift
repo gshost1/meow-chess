@@ -1,13 +1,13 @@
 import XCTest
 
 /// End-to-end tests that drive the app like a player. They use the real Chess.com API and the real
-/// Rust engine. The AI tests talk to `scripts/mock_ai_server.py` on 127.0.0.1:8765; run everything
+/// Rust engine. The AI tests talk to `scripts/mock_ai_server.py` on 127.0.0.1:18765; run everything
 /// with `scripts/run-ui-tests.sh`. Tests run in name order and the later ones reuse the games
 /// reviewed by the first.
 final class MeowChessUITests: XCTestCase {
     let app = XCUIApplication()
     let user = "julius201"
-    static let mockURL = "http://127.0.0.1:8765"
+    static let mockURL = "http://127.0.0.1:18765"
 
     override func setUp() {
         continueAfterFailure = false
@@ -27,17 +27,34 @@ final class MeowChessUITests: XCTestCase {
     /// Fresh install: enter a username, download games, review one, use the quiz and best-move line,
     /// the summary, the coach tab and a practice puzzle.
     func test1_FreshInstallJourney() {
-        app.launchArguments = ["-uiTesting", "-uiTestReset", "-strength", "fast"]
+        app.launchArguments = ["-uiTesting", "-uiTestReset", "-strength", "fast", "-quizMode", "all"]
         app.launch()
 
         let name = app.textFields["Chess.com username"]
         XCTAssertTrue(name.waitForExistence(timeout: 15), "welcome screen should ask for a username")
+        let pieces = app.segmentedControls["piece-style"]
+        XCTAssertTrue(pieces.exists)
+        XCTAssertTrue(pieces.buttons["Cat pieces"].isSelected)
+        pieces.buttons["Classic pieces"].tap()
+        XCTAssertTrue(pieces.buttons["Classic pieces"].isSelected)
+        capture("signup-piece-picker")
         name.tap()
         name.typeText(user)
         app.buttons["Get my games"].tap()
 
+        XCTAssertTrue(app.segmentedControls["games-time-control"].waitForExistence(timeout: 60))
+        capture("games-tabs-pending")
         openFirstGame()
         waitForReview()
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        let a = square("a1").frame, h = square("h1").frame
+        XCTAssertGreaterThan(max(a.maxX, h.maxX) - min(a.minX, h.minX), app.frame.width - 40,
+                             "review board should fill the width beside the evaluation bar")
+        let accuracies = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Accuracy '"))
+        XCTAssertEqual(accuracies.count, 2)
+        for label in accuracies.allElementsBoundByIndex { XCTAssertFalse(label.label.contains("%")) }
+        capture("review-no-tab-bar")
+        capture("classic-board")
 
         // Board is drawn with all 32 pieces in the right places.
         XCTAssertTrue(square("e1").label.contains("white king"), square("e1").label)
@@ -98,6 +115,9 @@ final class MeowChessUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Meowy's AI chat is optional"].waitForExistence(timeout: 5))
         dismissSheet()
 
+        // Leaving the review restores the tab bar.
+        leaveReview()
+
         // Coach tab.
         app.tabBars.buttons["Meowy"].tap()
         XCTAssertTrue(app.staticTexts["how you actually play"].waitForExistence(timeout: 10))
@@ -134,11 +154,23 @@ final class MeowChessUITests: XCTestCase {
 
         let sound = app.switches["settings-sound"]
         XCTAssertTrue(sound.waitForExistence(timeout: 10))
+        scrollTo(sound)
         let before = sound.value as? String ?? "1"
         flip(sound)
         XCTAssertTrue(waitForValue(sound, before == "1" ? "0" : "1"), "sound switch should flip")
         flip(sound)
         XCTAssertTrue(waitForValue(sound, before), "sound switch should flip back")
+
+        let pieces = app.segmentedControls["piece-style"]
+        scrollTo(pieces)
+        XCTAssertTrue(pieces.buttons["Classic pieces"].isSelected, "signup choice should persist")
+        pieces.buttons["Cat pieces"].tap()
+        XCTAssertTrue(pieces.buttons["Cat pieces"].isSelected)
+
+        let mode = app.buttons["settings-quiz-mode"]
+        scrollTo(mode)
+        mode.tap()
+        app.buttons["All my moves"].tap()
 
         // Add a key and test the connection.
         let key = app.secureTextFields["settings-ai-key"]
@@ -185,19 +217,95 @@ final class MeowChessUITests: XCTestCase {
         dismissSheet()
 
         // Turn the quiz off: an unanswered move shows the explanation straight away.
+        leaveReview()
         app.tabBars.buttons["Settings"].tap()
         let picker = app.buttons["settings-quiz-mode"]
         scrollTo(picker)
         picker.tap()
         app.buttons["Off"].tap()
         app.tabBars.buttons["Games"].tap()
+        openFirstGame()
+        waitForReview()
         app.buttons["First position"].tap()
         for _ in 0..<2 { app.buttons["Next move"].tap() }
         XCTAssertFalse(app.staticTexts["quiz-question"].exists, "quiz should be off")
         XCTAssertTrue(app.staticTexts["move-label"].exists)
     }
 
+    /// Offline games make tab, queue, and default-setting assertions repeatable.
+    func test3_TimeControlsAndReviewDefaults() {
+        app.launchArguments = ["-uiTesting", "-uiTestReset", "-uiTestFixtures", "-username", user, "-strength", "deep"]
+        app.launch()
+        let tabs = app.segmentedControls["games-time-control"]
+        XCTAssertTrue(tabs.waitForExistence(timeout: 15))
+        XCTAssertTrue(tabs.buttons["Rapid"].isSelected, "latest game determines the initial tab")
+        XCTAssertFalse(tabs.buttons["Daily"].exists)
+        let latest = app.buttons["game-fixture-0"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        XCTAssertFalse(latest.isEnabled, "unfinished recent games cannot open")
+        capture("games-tabs-pending")
+        tabs.buttons["Bullet"].tap()
+        XCTAssertTrue(app.staticTexts["vs BulletCat"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["vs RapidCat"].firstMatch.exists)
+        tabs.buttons["Blitz"].tap()
+        XCTAssertTrue(app.staticTexts["vs BlitzCat"].firstMatch.waitForExistence(timeout: 5))
+        app.terminate()
+        app.launchArguments = ["-uiTesting", "-username", user, "-strength", "fast"]
+        app.launch()
+        XCTAssertTrue(tabs.waitForExistence(timeout: 15))
+        XCTAssertTrue(tabs.buttons["Blitz"].isSelected, "time-control choice persists")
+        tabs.buttons["Rapid"].tap()
+        openFirstGame()
+        waitForReview()
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        let questions = app.switches["review-questions"]
+        XCTAssertEqual(questions.value as? String, "1")
+        flip(questions)
+        XCTAssertTrue(waitForValue(questions, "0"))
+        leaveReview()
+        app.tabBars.buttons["Settings"].tap()
+        let picker = app.buttons["settings-quiz-mode"]
+        scrollTo(picker)
+        XCTAssertTrue(picker.label.contains("Off"), picker.label)
+        app.tabBars.buttons["Games"].tap()
+        openFirstGame()
+        waitForReview()
+        flip(questions)
+        leaveReview()
+        app.tabBars.buttons["Settings"].tap()
+        scrollTo(picker)
+        XCTAssertTrue(picker.label.contains("Key moments"), picker.label)
+    }
+
+    func test4_DailyTabOnlyWhenNeeded() {
+        app.launchArguments = ["-uiTesting", "-uiTestReset", "-uiTestFixtures", "-uiTestDaily", "-username", user, "-strength", "fast"]
+        app.launch()
+        let tabs = app.segmentedControls["games-time-control"]
+        XCTAssertTrue(tabs.waitForExistence(timeout: 15))
+        XCTAssertTrue(tabs.buttons["Daily"].exists)
+        tabs.buttons["Daily"].tap()
+        XCTAssertTrue(app.staticTexts["vs DailyCat"].firstMatch.waitForExistence(timeout: 5))
+        let older = app.buttons["game-fixture-11"]
+        XCTAssertTrue(older.isEnabled, "older games can open before analysis")
+        older.tap()
+        waitForReview()
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+    }
+
     // MARK: Helpers
+
+    private func capture(_ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func leaveReview() {
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+    }
+
 
     private func square(_ name: String) -> XCUIElement {
         app.descendants(matching: .any)["square-\(name)"].firstMatch
@@ -215,12 +323,15 @@ final class MeowChessUITests: XCTestCase {
 
     /// Taps the switch knob itself; tapping the middle of a SwiftUI toggle row hits the label.
     private func flip(_ toggle: XCUIElement) {
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: -30, dy: 0)).tap()
     }
 
     private func openFirstGame() {
-        let first = app.collectionViews.cells.element(boundBy: 0)
+        let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "game-")).firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 60), "games should download from Chess.com")
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: first)
+        XCTAssertEqual(XCTWaiter().wait(for: [enabled], timeout: 300), .completed, "recent game should be saved before it opens")
         first.tap()
     }
 
